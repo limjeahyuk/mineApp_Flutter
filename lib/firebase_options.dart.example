@@ -1,0 +1,41 @@
+// 템플릿 — 실제 lib/firebase_options.dart 는 API 키가 있어 git에서 제외된다.
+// 클론 후: 이 파일을 lib/firebase_options.dart 로 복사해 실제 값을 채우거나,
+//   `dart pub global activate flutterfire_cli && flutterfire configure`(프로젝트 mineapp-aabc8)로 자동 생성.
+// google-services.json(android/app/)도 Firebase 콘솔에서 받아 배치해야 한다(git 제외됨).
+import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+
+class DefaultFirebaseOptions {
+  static FirebaseOptions get currentPlatform {
+    if (kIsWeb) throw UnsupportedError('웹 미지원');
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.iOS:
+        return ios;
+      case TargetPlatform.android:
+        return android;
+      default:
+        throw UnsupportedError('미설정 플랫폼');
+    }
+  }
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'YOUR_IOS_API_KEY',
+    appId: 'YOUR_IOS_APP_ID',
+    messagingSenderId: '470995040821',
+    projectId: 'mineapp-aabc8',
+    storageBucket: 'mineapp-aabc8.firebasestorage.app',
+    databaseURL: 'https://mineapp-aabc8-default-rtdb.firebaseio.com',
+    iosBundleId: 'com.imjaehyeog.MineApp',
+    iosClientId: 'YOUR_IOS_CLIENT_ID',
+  );
+
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'YOUR_ANDROID_API_KEY',
+    appId: 'YOUR_ANDROID_APP_ID',
+    messagingSenderId: '470995040821',
+    projectId: 'mineapp-aabc8',
+    storageBucket: 'mineapp-aabc8.firebasestorage.app',
+    databaseURL: 'https://mineapp-aabc8-default-rtdb.firebaseio.com',
+  );
+}
