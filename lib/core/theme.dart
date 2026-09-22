@@ -1,5 +1,30 @@
 import 'package:flutter/material.dart';
 
+import 'local_store.dart';
+
+/// 앱 전역 화면 테마(시스템/라이트/다크). 환경설정에서 바꾸면 즉시 반영되고
+/// `LocalStore`에 저장된다. `main`이 `MaterialApp.themeMode`를 여기에 연결.
+final ValueNotifier<ThemeMode> themeModeNotifier =
+    ValueNotifier(_parseThemeMode(LocalStore.shared.themeMode));
+
+ThemeMode _parseThemeMode(String s) => switch (s) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => ThemeMode.system,
+    };
+
+String themeModeName(ThemeMode m) => switch (m) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      ThemeMode.system => 'system',
+    };
+
+/// 테마를 바꾸고 저장 + 알림.
+void setThemeMode(ThemeMode m) {
+  LocalStore.shared.themeMode = themeModeName(m);
+  themeModeNotifier.value = m;
+}
+
 /// Swift `Theme`(Core/Theme.swift) 이식 — 다크 우선 + 라이트 적응, 무채색(회색조) 기반.
 /// 색상 테마(틴트 스킨)는 클래식(무채색)만 이식(원본 기본값). 글자색은 항상 무채색.
 class AppTheme {

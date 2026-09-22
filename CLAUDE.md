@@ -64,6 +64,11 @@
 - 대전 메뉴 게임유형 탭(`GameType.mine/treasure/coop`)이 실제 라우팅 — 랜덤/방만들기/코드참가가 선택 유형의 화면을 연다.
 - ponytail 미이식: 협동 지뢰 페널티 상대 동기화·확성기 브로드캐스트·stun 전파(핵심 reveal/flag/보드 동기화만), 보물 깃발 동기화(TreasureModel엔 onPushFlag 없음).
 
+## 환경설정 · 내 정보 — 이식됨
+- 환경설정: `settings/settings_screen.dart` — 화면 테마(시스템/라이트/다크) + 게임 햅틱 2종 on/off. 테마는 전역 `themeModeNotifier`(theme.dart)+`setThemeMode`로 즉시 반영, `main.dart`의 `MaterialApp.themeMode`가 구독. 저장은 `LocalStore.themeMode`. 햅틱은 `Haptics.isEnabled/isFlagEnabled`(LocalStore 백업)로 게이트. 색상 테마(스킨) 갤러리는 미이식(클래식 무채색만).
+- 내 정보: `profile/profile_screen.dart` — 닉네임 변경(다이얼로그, 최대 16자) + 장착 칭호 배지(`equippedTitleId`→Title.all 조회, rarity 색) + 보유(코인·자동깃발·레이더) + 난이도별 솔로 기록(soloBest/soloClearCount). 계정 연동(Apple/Google)·계정 삭제는 플랫폼 연동 미이식이라 생략.
+- 홈 하단 내비 내 정보→ProfileScreen, 설정→SettingsScreen.
+
 ## 원본에서 아직 미이식(로드맵)
 
-가이드/설정/내정보, 일일 도전과제, 합동(coop) 규칙 탭·봇과 대전, 실제 AdMob·IAP 코인팩, AFK 자동몰수, Apple/Google 로그인, bestTime/재개 스냅샷의 shared_preferences 연동, 익명 uid 데이터 이관, 아이템/코인/칭호 클라우드 백업, Game Center, 협동 랭킹(touchScores).
+가이드(Tutorial), 일일 도전과제, 합동(coop) 규칙 탭·봇과 대전, 실제 AdMob·IAP 코인팩, AFK 자동몰수, Apple/Google 로그인·계정 삭제, bestTime/재개 스냅샷의 shared_preferences 연동, 익명 uid 데이터 이관, 아이템/코인/칭호 클라우드 백업, 색상 테마(스킨), Game Center, 협동 랭킹(touchScores).

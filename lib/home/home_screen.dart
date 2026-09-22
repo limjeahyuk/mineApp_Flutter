@@ -6,15 +6,16 @@ import '../core/theme.dart';
 import '../game/game_screen.dart';
 import '../mail/mail_screen.dart';
 import '../multiplayer/versus_menu_screen.dart';
+import '../profile/profile_screen.dart';
 import '../progression/achievements_screen.dart';
 import '../ranking/ranking_screen.dart';
+import '../settings/settings_screen.dart';
 import '../shop/shop_screen.dart';
 
 /// 홈 화면 — Swift StartView 이식. 상단바(알림·선물·코인·상점) + 타이틀 +
 /// 솔로/멀티 카드 + 하단 내비(가이드·랭킹·업적·내정보·설정).
 ///
-/// ponytail: 우편/랭킹/업적/가이드/내정보/설정은 아직 미이식(탭 시 "준비 중").
-/// 상점은 이식됨(코인 표시는 LocalStore 실값).
+/// ponytail: 가이드만 아직 미이식(탭 시 "준비 중"). 우편/랭킹/업적/내정보/설정/상점은 이식됨.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -194,8 +195,15 @@ class _HomeScreenState extends State<HomeScreen> {
             Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => const AchievementsScreen()));
           }),
-          _navItem(t, Icons.person, '내 정보', () => _soon(c, '내 정보')),
-          _navItem(t, Icons.settings, '설정', () => _soon(c, '설정')),
+          _navItem(t, Icons.person, '내 정보', () async {
+            await Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ProfileScreen()));
+            if (mounted) setState(() {}); // 닉네임·잔액 변동 반영
+          }),
+          _navItem(t, Icons.settings, '설정', () {
+            Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsScreen()));
+          }),
         ],
       ),
     );

@@ -35,6 +35,9 @@ class LocalStore {
   static const _kCoins = 'shop.coins';
   static const _kAdRewardDay = 'shop.adRewardDay';
   static const _kAdsWatchedToday = 'shop.adsWatchedToday';
+  static const _kThemeMode = 'settings.themeMode';
+  static const _kHaptics = 'settings.haptics';
+  static const _kFlagHaptics = 'settings.flagHaptics';
 
   /// 첫 실행 시작 지급 — Swift와 동일(자동깃발 10, 레이더 5, 코인 100).
   static const _startFlags = 10;
@@ -63,6 +66,16 @@ class LocalStore {
 
   String get equippedTitleName => _prefs.getString(_kEquippedTitle) ?? '';
   set equippedTitleName(String v) => _prefs.setString(_kEquippedTitle, v);
+
+  // 환경설정 — 화면 테마('system'/'light'/'dark')와 햅틱 on/off(기본 켜짐).
+  String get themeMode => _prefs.getString(_kThemeMode) ?? 'system';
+  set themeMode(String v) => _prefs.setString(_kThemeMode, v);
+
+  bool get hapticsEnabled => _prefs.getBool(_kHaptics) ?? true;
+  set hapticsEnabled(bool v) => _prefs.setBool(_kHaptics, v);
+
+  bool get flagHapticsEnabled => _prefs.getBool(_kFlagHaptics) ?? true;
+  set flagHapticsEnabled(bool v) => _prefs.setBool(_kFlagHaptics, v);
 
   // ── 아이템 인벤토리 ──
   // 키가 없으면(첫 실행) 시작 지급분을 저장해 안정적으로 만든다.

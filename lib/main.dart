@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'core/auth_service.dart';
 import 'core/local_store.dart';
+import 'core/theme.dart';
 import 'firebase_options.dart';
 import 'home/home_screen.dart';
 
@@ -20,19 +21,23 @@ class MineApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: '지뢰찾기 아레나',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-        useMaterial3: true,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeModeNotifier,
+      builder: (_, mode, _) => MaterialApp(
+        title: '지뢰찾기 아레나',
+        debugShowCheckedModeBanner: false,
+        themeMode: mode,
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+          useMaterial3: true,
+        ),
+        darkTheme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.indigo, brightness: Brightness.dark),
+          useMaterial3: true,
+        ),
+        home: const HomeScreen(),
       ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.indigo, brightness: Brightness.dark),
-        useMaterial3: true,
-      ),
-      home: const HomeScreen(),
     );
   }
 }
