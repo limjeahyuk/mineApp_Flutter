@@ -8,6 +8,7 @@ import '../guide/guide_screen.dart';
 import '../mail/mail_screen.dart';
 import '../multiplayer/versus_menu_screen.dart';
 import '../notice/notice.dart';
+import '../notice/notice_popup.dart';
 import '../notice/notice_screen.dart';
 import '../profile/profile_screen.dart';
 import '../progression/achievements_screen.dart';
@@ -38,9 +39,16 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _checkNotices() async {
     try {
       final list = await NoticeService().fetchActive();
+      if (!mounted) return;
       final last = LocalStore.shared.noticeLastSeen;
-      final unread = list.any((n) => n.date.isAfter(last));
-      if (mounted) setState(() => _noticeDot = unread);
+      setState(() => _noticeDot = list.any((n) => n.date.isAfter(last)));
+      // 콜드런치 팝업 — showPopup이고 오늘 아직 안 막은 첫 공지 하나만.
+      for (final n in list) {
+        if (n.showPopup && !LocalStore.shared.isNoticeDismissedToday(n.id)) {
+          await showNoticePopup(context, n);
+          break;
+        }
+      }
     } catch (_) {/* 조용히 무시 — 종 점만 안 뜸 */}
   }
 

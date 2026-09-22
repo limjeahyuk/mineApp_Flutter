@@ -84,6 +84,17 @@ class LocalStore {
   void markNoticesSeen(DateTime newest) =>
       _prefs.setInt(_kNoticeLastSeen, newest.millisecondsSinceEpoch);
 
+  // 공지 시작 팝업 — "오늘은 그만 보기"로 막은 공지(키=prefix+id, 값=yyyy-MM-dd).
+  static String _todayKey() {
+    final n = DateTime.now();
+    return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
+  }
+
+  bool isNoticeDismissedToday(String id) =>
+      _prefs.getString('notice.dismissedToday.$id') == _todayKey();
+  void dismissNoticeForToday(String id) =>
+      _prefs.setString('notice.dismissedToday.$id', _todayKey());
+
   // ── 아이템 인벤토리 ──
   // 키가 없으면(첫 실행) 시작 지급분을 저장해 안정적으로 만든다.
   int _owned(String key, int grant) {
