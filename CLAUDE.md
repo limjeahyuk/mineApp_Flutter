@@ -74,6 +74,11 @@
 - 튜토리얼: 게임 목표 카드 + 기본 조작 + 화면 버튼·표시. 공략: 색 범례(지뢰=빨강·안전=초록) + 패턴 6종(①②③·1-2-1·1-2-2-1·1-1), 각 카드에 미니보드 일러스트(`_TutoBoard`, 숫자색은 `minesweeperNumberColor` 재사용). 멀티: 시작 방법 3종 + 게임별 규칙 카드 3종(지뢰찾기/보물찾기/너에게 닿기를).
 - 홈 하단 내비 가이드→GuideScreen.
 
+## 알림(공지) — 이식됨
+- `notice/notice.dart`(Notice + NoticeService, Firestore `notices` 읽기, named DB, isActive==true + 클라 정렬=고정 먼저·최신순) + `notice/notice_screen.dart`(목록·고정 배지·빈 상태). Swift NoticeView/Notice 이식.
+- 홈 종(bell)→NoticeScreen. 안 읽음 점: 홈 initState에서 공지 조회 후 `LocalStore.noticeLastSeen`보다 새 공지가 있으면 표시, 목록 열면 최신 시각 저장(markNoticesSeen)+점 끔.
+- 미이식: 콜드런치 공지 팝업(NoticePopupView)·"오늘은 그만 보기"(목록만 이식).
+
 ## 원본에서 아직 미이식(로드맵)
 
-일일 도전과제, 합동(coop) 규칙 탭·봇과 대전, 실제 AdMob·IAP 코인팩, AFK 자동몰수, Apple/Google 로그인·계정 삭제, bestTime/재개 스냅샷의 shared_preferences 연동, 익명 uid 데이터 이관, 아이템/코인/칭호 클라우드 백업, 색상 테마(스킨), Game Center, 협동 랭킹(touchScores).
+공지 시작 팝업, 일일 도전과제, 합동(coop) 규칙 탭·봇과 대전, 실제 AdMob·IAP 코인팩, AFK 자동몰수, Apple/Google 로그인·계정 삭제, bestTime/재개 스냅샷의 shared_preferences 연동, 익명 uid 데이터 이관, 아이템/코인/칭호 클라우드 백업, 색상 테마(스킨), Game Center, 협동 랭킹(touchScores).

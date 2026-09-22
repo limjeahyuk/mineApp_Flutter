@@ -38,6 +38,7 @@ class LocalStore {
   static const _kThemeMode = 'settings.themeMode';
   static const _kHaptics = 'settings.haptics';
   static const _kFlagHaptics = 'settings.flagHaptics';
+  static const _kNoticeLastSeen = 'notice.lastSeenMs';
 
   /// 첫 실행 시작 지급 — Swift와 동일(자동깃발 10, 레이더 5, 코인 100).
   static const _startFlags = 10;
@@ -76,6 +77,12 @@ class LocalStore {
 
   bool get flagHapticsEnabled => _prefs.getBool(_kFlagHaptics) ?? true;
   set flagHapticsEnabled(bool v) => _prefs.setBool(_kFlagHaptics, v);
+
+  // 공지 — 목록을 마지막으로 본 시각(이후 새 공지가 있으면 종에 점).
+  DateTime get noticeLastSeen =>
+      DateTime.fromMillisecondsSinceEpoch(_prefs.getInt(_kNoticeLastSeen) ?? 0);
+  void markNoticesSeen(DateTime newest) =>
+      _prefs.setInt(_kNoticeLastSeen, newest.millisecondsSinceEpoch);
 
   // ── 아이템 인벤토리 ──
   // 키가 없으면(첫 실행) 시작 지급분을 저장해 안정적으로 만든다.

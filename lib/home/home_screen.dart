@@ -7,6 +7,8 @@ import '../game/game_screen.dart';
 import '../guide/guide_screen.dart';
 import '../mail/mail_screen.dart';
 import '../multiplayer/versus_menu_screen.dart';
+import '../notice/notice.dart';
+import '../notice/notice_screen.dart';
 import '../profile/profile_screen.dart';
 import '../progression/achievements_screen.dart';
 import '../ranking/ranking_screen.dart';
@@ -16,7 +18,7 @@ import '../shop/shop_screen.dart';
 /// 홈 화면 — Swift StartView 이식. 상단바(알림·선물·코인·상점) + 타이틀 +
 /// 솔로/멀티 카드 + 하단 내비(가이드·랭킹·업적·내정보·설정).
 ///
-/// ponytail: 상단 알림(bell)만 "준비 중". 가이드/우편/랭킹/업적/내정보/설정/상점은 이식됨.
+/// 알림/가이드/우편/랭킹/업적/내정보/설정/상점 모두 이식됨.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -25,18 +27,27 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  bool _noticeDot = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkNotices();
+  }
+
+  Future<void> _checkNotices() async {
+    try {
+      final list = await NoticeService().fetchActive();
+      final last = LocalStore.shared.noticeLastSeen;
+      final unread = list.any((n) => n.date.isAfter(last));
+      if (mounted) setState(() => _noticeDot = unread);
+    } catch (_) {/* 조용히 무시 — 종 점만 안 뜸 */}
+  }
+
   Future<void> _openShop(int tab) async {
     await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => ShopScreen(initialTab: tab)));
     if (mounted) setState(() {}); // 코인 잔액 갱신
-  }
-
-  void _soon(BuildContext c, String name) {
-    ScaffoldMessenger.of(c)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-          content: Text('$name — 준비 중이에요'),
-          duration: const Duration(seconds: 1)));
   }
 
   @override
@@ -97,7 +108,13 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Row(
         children: [
-          _circleBtn(t, Icons.notifications_none, () => _soon(c, '알림')),
+          _circleBtn(t, Icons.notifications_none, () {
+            Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => const NoticeScreen()))
+                .then((_) {
+              if (mounted) setState(() => _noticeDot = false); // 봤으면 점 끄기
+            });
+          }, badge: _noticeDot),
           const SizedBox(width: 10),
           _circleBtn(t, Icons.redeem, () {
             Navigator.of(context)
