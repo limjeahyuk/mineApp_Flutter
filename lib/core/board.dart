@@ -72,8 +72,8 @@ class MinePlacement {
   final Set<int> golden;
 }
 
-/// Swift `GameModel.placeMines(safeR:safeC:using:)` 의 결정적 부분을 그대로 이식.
-/// RNG 소비 순서: candidates.shuffle → Int.random(1...2) → minePositions.shuffled.
+/// 지뢰 배치의 결정적 부분(같은 seed → 같은 보드).
+/// RNG 소비 순서: candidates.shuffle → intInClosed(1,2) → minePositions.shuffled.
 MinePlacement placeBaseMines({
   required Difficulty difficulty,
   required int seed,

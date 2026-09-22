@@ -8,10 +8,19 @@ import 'cell_view.dart';
 /// 보드 렌더링(솔로·대전 공용). 가용 영역에 맞춰 정사각형 셀 크기를 정하고,
 /// 큰 보드는 InteractiveViewer로 핀치줌·패닝. Swift BoardView 이식.
 class BoardWidget extends StatelessWidget {
-  const BoardWidget({super.key, required this.game, required this.flagMode});
+  const BoardWidget(
+      {super.key,
+      required this.game,
+      required this.flagMode,
+      this.controller,
+      this.probing = false,
+      this.onProbe});
 
   final GameModel game;
   final bool flagMode;
+  final TransformationController? controller;
+  final bool probing; // 자동깃발 발동 대기
+  final void Function(int r, int c)? onProbe;
 
   static const _maxCell = 44.0;
   static const _spacing = 1.5;
@@ -31,6 +40,7 @@ class BoardWidget extends StatelessWidget {
         final cell = side < 1 ? 1.0 : side;
         return Center(
           child: InteractiveViewer(
+            transformationController: controller,
             minScale: 1,
             maxScale: 4,
             child: Container(
@@ -57,6 +67,8 @@ class BoardWidget extends StatelessWidget {
                                 gameEnded: gameEnded,
                                 flagMode: flagMode,
                                 size: cell,
+                                probing: probing,
+                                onProbe: () => onProbe?.call(r, c),
                                 onReveal: () => game.reveal(r, c),
                                 onFlag: () => game.toggleFlag(r, c),
                               ),

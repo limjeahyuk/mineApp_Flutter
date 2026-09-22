@@ -14,6 +14,8 @@ class CellView extends StatelessWidget {
     required this.size,
     required this.onReveal,
     required this.onFlag,
+    this.probing = false,
+    this.onProbe,
   });
 
   final Cell cell;
@@ -22,6 +24,8 @@ class CellView extends StatelessWidget {
   final double size;
   final VoidCallback onReveal;
   final VoidCallback onFlag;
+  final bool probing; // 자동깃발 발동 대기 — 숫자 칸 탭이 자동깃발로 감
+  final VoidCallback? onProbe;
 
   static const _gold = Color(0xFFF2BC2E);
 
@@ -31,7 +35,14 @@ class CellView extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
-        if (flagMode && !cell.isRevealed) {
+        // 자동깃발 발동 중: 숫자 칸(열린 비지뢰)을 탭하면 자동깃발.
+        if (probing &&
+            cell.isRevealed &&
+            !cell.isMine &&
+            cell.adjacent > 0 &&
+            onProbe != null) {
+          onProbe!();
+        } else if (flagMode && !cell.isRevealed) {
           onFlag();
         } else {
           onReveal();
