@@ -4,12 +4,12 @@
 
 ## 핵심 제약: 결정성(Determinism)
 
-크로스플레이(iOS↔Android)는 같은 시드로 **양쪽이 비트 단위로 동일한 보드**를 생성하는 데 의존한다. `lib/core/seeded_random.dart`는 Swift `SeededGenerator`(SplitMix64) + Swift stdlib의 난수 소비 방식을 그대로 재현한 것이다. 여기 손대면 크로스플레이가 깨진다.
+크로스플레이(iOS↔Android)는 같은 시드로 **양쪽이 동일한 보드**를 생성하는 데 의존한다. RTDB엔 보드 전체가 아니라 `seed`(정수 하나)만 오가고, 양쪽이 각자 `lib/core/seeded_random.dart`로 같은 보드를 만든다.
 
-- `nextBounded`: Swift `next(upperBound:)` = Lemire(`multipliedFullWidth`→high), BigInt로 128비트 곱.
-- `doubleInRange`: Swift `Double.random`은 Lemire가 **아님** — `next() & (2^53-1) / 2^53`(하위 53비트 마스크).
-- `nextBool`: `(next()>>>17)&1==0`. Dart 정수는 2^64 wrap, 논리 시프트는 `>>>` 사용.
-- 변경 시 반드시 `test/seeded_random_test.dart`(Swift 실측 golden vector)로 검증.
+- 내부는 `dart:math`의 `Random(seed)` — 플랫폼 무관 결정적이라 iOS/Android 둘 다 Flutter면 같은 seed → 같은 수열. 별도 구현 불필요.
+- 난수 **소비 순서**(어떤 메서드를 몇 번 부르는지)는 여전히 보드 생성 로직에서 지켜야 한다(양쪽이 같은 코드를 도니 자동으로 맞음).
+- 변경 시 `test/seeded_random_test.dart`(같은 seed → 같은 결과 재현성)로 검증.
+- 참고: 예전엔 App Store의 옛 Swift 앱과도 매칭하려고 Swift stdlib 난수(SplitMix64+Lemire)를 비트단위 복제했으나, Flutter가 Swift를 완전 대체하기로 하여 걷어냄. 옛 Swift 앱과의 크로스버전 매칭은 포기(유저 거의 없음).
 
 ## Firebase
 
@@ -34,6 +34,36 @@
 - 모드: 솔로 `game_screen`, 대전(스피드/점수) `multiplayer/`, 협동 `modes/touch_model`, 보물찾기 `modes/treasure_model`.
 - 명령: `flutter run -d <id>`, `flutter test`.
 
+## 아이템(레이더·자동깃발)
+- 로직은 `game_model.dart`(`useRadar`/`useAutoFlag`, 티켓=min(보유, 상한)). 상한: 레이더 `Difficulty.radarCap`(초1·중1·고2·최고3), 자동깃발 솔로 `soloAutoFlagCap`(초3·중3·고5·최고7)·타모드 3.
+- 인벤토리 영속화: `LocalStore.ownedFlags/ownedRadars`(시작지급 flag 10·radar 5, `consumeFlag/Radar`·`addFlags/Radars`).
+- 배선: 화면(game_screen·versus_screen) initState에서 `game.autoFlagSupplier/onConsumeAutoFlag/radarSupplier/onConsumeRadar`를 LocalStore에 연결(**startSolo/startSeeded 전에** — 거기서 티켓 계산).
+- UI: `item_dock.dart`(우하단 플로팅). 자동깃발은 탭→probing(보라 강조)→숫자칸 탭으로 발동(BoardWidget/CellView의 `probing`/`onProbe`).
+
+## 상점(코인·가챠) — 이식됨
+- `shop/shop_screen.dart`(뽑기/충전 2탭), `shop/shop_logic.dart`(draw/drawTriple, 균등 1/3, 잭팟=×3 전부 일치 시 전 아이템 3개씩).
+- 코인/광고: `LocalStore.coins`(시작 100), `drawCost 30`·`tripleDrawCost 90`, `claimRewardedAd`(+30, 하루 `dailyAdLimit 5`). 광고는 시뮬(즉시 지급) — 실제 AdMob 미이식. 유료 코인팩(IAP)도 미이식("준비 중").
+- 홈·대전메뉴 코인 칩은 `LocalStore.coins` 실값 표시. 홈 상점 아이콘/코인 칩 → ShopScreen.
+
+## 랭킹 — 이식됨
+- `ranking/ranking_screen.dart`(솔로/대전·협동 2탭), `ranking/ranking_service.dart`(Firestore `scores`, named DB `mineappdatabase`, docId `deviceId_난이도`, difficulty=`Difficulty.label`, timeSec 클라 정렬).
+- 로컬 기록: `LocalStore.soloBest/soloClearCount/recordSolo`(난이도별 최고·클리어수), 대전 전적 `raceWins/Losses/Draws/recordRace*`.
+- 배선: 솔로 승리 → `game.onSoloWin`에서 `recordSolo` + 신기록이면 `RankingService.submitBest`(game_screen). 대전 종료 → versus_screen 리스너가 `recordRace*` 1회. 홈 랭킹 버튼 → RankingScreen.
+- **기존 Swift 앱과 같은 `scores` 컬렉션 → 크로스플랫폼 랭킹 공유**(실측 확인). 협동 랭킹(`touchScores`)은 모드 미이식이라 "준비 중".
+
+## 우편함 · 업적/칭호 — 이식됨
+- 우편함: `mail/mail.dart`(MailGift + Firestore `mailGifts` 읽기, named DB) + `mail/mail_screen.dart`. "받기" → `LocalStore.grantMailReward` + `markMailClaimed`(1회). 홈 선물 아이콘 → MailScreen.
+- 업적/칭호: `progression/title.dart`(칭호 23종 카탈로그 + Goal 평가 + `refreshAchievements`) + `progression/achievements_screen.dart`(도전과제 진행/칭호 장착·구매 2탭). 홈 업적 → AchievementsScreen.
+- 통계(LocalStore): `gachaDraws/gachaJackpots`(ShopLogic 배선), `goldenMinesFound`(game.onGoldenMineFound 배선), `bestWinStreak`(recordRaceWin/Loss), `noItemExpert/UltimateClears`(onSoloWin noItem). 칭호 보유 `ownedTitleIds`+장착 `equippedTitleId`.
+- 미이식 목표(항상 잠금): 협동(touchClears/touchUnder)·테마(themesOwned) — `UnportedGoal`. 일일 도전과제(DailyChallenge)도 미이식.
+
+## 협동·보물찾기 모드 — 이식됨
+- 모델은 기존 `modes/touch_model.dart`(협동 안개 공유보드)·`modes/treasure_model.dart`(중앙 보물 경쟁). 컨트롤러/화면 신규:
+  - 협동: `modes/coop_controller.dart` + `coop_screen.dart`(`FirebaseMatchService(kind:'touch')`, 안개 렌더 = `isVisible` 밖은 어둡게, 만나면 공동 승리).
+  - 보물: `modes/treasure_controller.dart` + `treasure_screen.dart`(`kind:'treasure'`, 중앙 💎 먼저 열면 승리, 나·상대 진행바).
+- 대전 메뉴 게임유형 탭(`GameType.mine/treasure/coop`)이 실제 라우팅 — 랜덤/방만들기/코드참가가 선택 유형의 화면을 연다.
+- ponytail 미이식: 협동 지뢰 페널티 상대 동기화·확성기 브로드캐스트·stun 전파(핵심 reveal/flag/보드 동기화만), 보물 깃발 동기화(TreasureModel엔 onPushFlag 없음).
+
 ## 원본에서 아직 미이식(로드맵)
 
-협동/보물찾기 화면, 샵/랭킹/우편, 아이템 버튼(자동깃발·레이더), AFK 자동몰수, Apple/Google 로그인, bestTime/재개 스냅샷의 shared_preferences 연동, 익명 uid 데이터 이관.
+가이드/설정/내정보, 일일 도전과제, 합동(coop) 규칙 탭·봇과 대전, 실제 AdMob·IAP 코인팩, AFK 자동몰수, Apple/Google 로그인, bestTime/재개 스냅샷의 shared_preferences 연동, 익명 uid 데이터 이관, 아이템/코인/칭호 클라우드 백업, Game Center, 협동 랭킹(touchScores).
