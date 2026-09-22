@@ -86,6 +86,13 @@
 - 이벤트 배선(오늘 뽑힌 kind만 누적): 솔로 클리어→clears, 대전 승→raceWins, 황금지뢰→golden, 뽑기→draws(단일1·×3은 3), 협동 성공→touch. game_screen/versus_screen/shop_logic/coop_controller에서 `Daily.bump`.
 - 테스트: `test/daily_test.dart`(forDay 결정성·회전, bump 가드, claim 1회).
 
+## 봇과 대전 — 이식됨(지뢰찾기 전용)
+- `multiplayer/bot_match_service.dart`(MatchService 구현). Swift BotMatchService 이식.
+  - 스피드: 시간 기반 상대 시뮬(난이도별 목표 시각 speedFinishSeconds에 완료, 초급≈35초·최고급≈14분).
+  - 지뢰 대결: 봇이 같은 시드 보드의 미러(GameModel)를 직접 플레이 — 열린 숫자만으로 추론(deductions), 확정 지뢰는 flagBias 확률로 차지, 막히면 frontier 안전칸 확장. onRemoteBoard로 사람 화면 공유 보드에 반영, 사람 동작은 pushReveal/pushFlag로 봇 미러에 반영. turnInterval+paceMultiplier(후반 감속)로 난이도 조절.
+- 배선: `RaceMode.bot(difficulty, rule)`(multiplayer.dart) → versus_screen이 mode.kind==bot이면 BotMatchService 사용, 아니면 FirebaseMatchService. race_controller: bot은 find로 매칭·rematch로 같은 봇 새 판. 대전 메뉴 '봇과 대전' 카드(지뢰찾기만; 보물/협동은 "준비 중").
+- 미이식: 협동/보물 봇, 봇 칭호(opponentTitle).
+
 ## 원본에서 아직 미이식(로드맵)
 
-봇과 대전(오프라인 연습), 실제 AdMob·IAP 코인팩, AFK 자동몰수, Apple/Google 로그인·계정 삭제, bestTime/재개 스냅샷의 shared_preferences 연동, 익명 uid 데이터 이관, 아이템/코인/칭호 클라우드 백업, 색상 테마(스킨), Game Center, 협동 랭킹(touchScores).
+협동·보물 봇, 실제 AdMob·IAP 코인팩, AFK 자동몰수, Apple/Google 로그인·계정 삭제, bestTime/재개 스냅샷의 shared_preferences 연동, 익명 uid 데이터 이관, 아이템/코인/칭호 클라우드 백업, 색상 테마(스킨), Game Center, 협동 랭킹(touchScores).

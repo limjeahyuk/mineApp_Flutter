@@ -60,8 +60,8 @@ class MatchInfo {
   final String opponentTitle;
 }
 
-/// 레이스 진입 방식 — 홈/메뉴에서 고른 모드. (오프라인 봇은 미이식)
-enum RaceModeKind { quick, host, join }
+/// 레이스 진입 방식 — 홈/메뉴에서 고른 모드. bot=오프라인 봇전.
+enum RaceModeKind { quick, host, join, bot }
 
 class RaceMode {
   RaceMode.quick(Difficulty this.difficulty, this.rule)
@@ -74,6 +74,9 @@ class RaceMode {
       : kind = RaceModeKind.join,
         difficulty = null,
         rule = RaceRule.speed;
+  RaceMode.bot(Difficulty this.difficulty, this.rule)
+      : kind = RaceModeKind.bot,
+        code = null;
 
   final RaceModeKind kind;
   final Difficulty? difficulty;

@@ -6,6 +6,7 @@ import '../core/types.dart';
 import '../game/board_widget.dart';
 import '../game/item_dock.dart';
 import '../progression/daily.dart';
+import 'bot_match_service.dart';
 import 'firebase_match_service.dart';
 import 'multiplayer.dart';
 import 'race_controller.dart';
@@ -23,8 +24,10 @@ class VersusScreen extends StatefulWidget {
 }
 
 class _VersusScreenState extends State<VersusScreen> {
-  late final RaceController ctrl =
-      RaceController(FirebaseMatchService(kind: 'mine'));
+  late final RaceController ctrl = RaceController(
+      widget.mode.kind == RaceModeKind.bot
+          ? BotMatchService(rule: widget.mode.rule)
+          : FirebaseMatchService(kind: 'mine'));
   // 대전은 시작 시 첫 칸이 열려 있으므로 깃발 모드를 기본으로 둔다(원본과 동일).
   bool flagMode = true;
   bool probing = false; // 자동깃발 발동 대기

@@ -97,6 +97,7 @@ class RaceController extends ChangeNotifier {
   Future<MatchInfo> _matchInfo(RaceMode mode) {
     switch (mode.kind) {
       case RaceModeKind.quick:
+      case RaceModeKind.bot:
         return service.find(mode.difficulty!, mode.rule);
       case RaceModeKind.host:
         return service.createRoom(mode.difficulty!, mode.rule);
@@ -140,11 +141,12 @@ class RaceController extends ChangeNotifier {
 
   // ── 재대결 ──
   void rematch() {
-    if (_mode.kind == RaceModeKind.host || _mode.kind == RaceModeKind.join) {
-      _startRematch();
-    } else {
+    // 방/코드/봇은 같은 상대로 새 판(service.rematch), 랜덤은 새로 매칭.
+    if (_mode.kind == RaceModeKind.quick) {
       service.leave();
       start(_mode);
+    } else {
+      _startRematch();
     }
   }
 

@@ -72,6 +72,7 @@ class TreasureController extends ChangeNotifier {
   Future<MatchInfo> _findMatch(RaceMode mode) {
     switch (mode.kind) {
       case RaceModeKind.quick:
+      case RaceModeKind.bot: // 보물 봇 미이식 — 랜덤 매칭과 동일 처리(메뉴에서 도달 불가)
         return service.find(mode.difficulty!, mode.rule);
       case RaceModeKind.host:
         return service.createRoom(mode.difficulty!, mode.rule);

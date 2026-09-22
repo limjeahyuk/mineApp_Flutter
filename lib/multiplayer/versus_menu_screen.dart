@@ -15,7 +15,7 @@ enum GameType { mine, treasure, coop }
 /// 게임 유형(지뢰찾기/보물찾기/너에게 닿기를) · 종류(스피드/지뢰대결/합동) ·
 /// 난이도 · 대전 방식(랜덤/봇/방만들기) · 코드 참가.
 ///
-/// ponytail: 합동 규칙·봇과 대전은 미이식(탭 시 "준비 중").
+/// ponytail: 봇과 대전은 지뢰찾기(스피드·지뢰대결)만 이식. 합동 규칙은 미이식("준비 중").
 class VersusMenuScreen extends StatefulWidget {
   const VersusMenuScreen({super.key});
 
@@ -63,6 +63,15 @@ class _VersusMenuScreenState extends State<VersusMenuScreen> {
     _launch(RaceMode.join(code.trim()));
   }
 
+  // 봇전은 지뢰찾기(스피드·지뢰대결)만 이식. 보물찾기·너에게 닿기를는 준비 중.
+  void _launchBot() {
+    if (gameType != GameType.mine) {
+      _soon('봇과 대전(${gameType == GameType.treasure ? '보물찾기' : '너에게 닿기를'})');
+      return;
+    }
+    _launch(RaceMode.bot(difficulty, rule));
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
@@ -87,7 +96,7 @@ class _VersusMenuScreenState extends State<VersusMenuScreen> {
                       () => _launch(RaceMode.quick(difficulty, rule))),
                   const SizedBox(height: 12),
                   _bigCard(t, _greenCard, Icons.memory, '봇과 대전',
-                      '오프라인에서 연습', () => _soon('봇과 대전')),
+                      '오프라인에서 연습', _launchBot),
                   const SizedBox(height: 12),
                   _bigCard(t, _purpleCard, Icons.person_add_alt, '방 만들기',
                       '이 설정으로 코드를 발급해 초대',
