@@ -4,6 +4,7 @@ import '../core/board.dart';
 import '../core/local_store.dart';
 import '../core/theme.dart';
 import '../game/game_screen.dart';
+import '../guide/guide_screen.dart';
 import '../mail/mail_screen.dart';
 import '../multiplayer/versus_menu_screen.dart';
 import '../profile/profile_screen.dart';
@@ -15,7 +16,7 @@ import '../shop/shop_screen.dart';
 /// 홈 화면 — Swift StartView 이식. 상단바(알림·선물·코인·상점) + 타이틀 +
 /// 솔로/멀티 카드 + 하단 내비(가이드·랭킹·업적·내정보·설정).
 ///
-/// ponytail: 가이드만 아직 미이식(탭 시 "준비 중"). 우편/랭킹/업적/내정보/설정/상점은 이식됨.
+/// ponytail: 상단 알림(bell)만 "준비 중". 가이드/우편/랭킹/업적/내정보/설정/상점은 이식됨.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -186,7 +187,10 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _navItem(t, Icons.menu_book, '가이드', () => _soon(c, '가이드')),
+          _navItem(t, Icons.menu_book, '가이드', () {
+            Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const GuideScreen()));
+          }),
           _navItem(t, Icons.emoji_events, '랭킹', () {
             Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const RankingScreen()));
