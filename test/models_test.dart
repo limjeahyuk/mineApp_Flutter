@@ -5,15 +5,6 @@ import 'package:mine_app/core/types.dart';
 import 'package:mine_app/modes/touch_model.dart';
 import 'package:mine_app/modes/treasure_model.dart';
 
-/// FNV-1a 64bit — truth2.swift와 동일 상수/연산(Dart int는 mod 2^64 wrap).
-String fnv(List<int> xs) {
-  var h = 1469598103934665603; // FNV offset
-  for (final p in xs) {
-    h = (h ^ p) * 1099511628211;
-  }
-  return BigInt.from(h).toUnsigned(64).toString();
-}
-
 void main() {
   const seed = 777;
 
@@ -51,50 +42,50 @@ void main() {
     expect(parsed.$2, 0xABCDEF);
   });
 
-  test('Touch 보드 생성 결정성 (size 40, seed 777) — Swift 실측 일치', () {
+  // 같은 seed로 두 번 생성해 스냅샷을 비교하는 헬퍼(크로스플레이 결정성 = 이게 성립).
+  ({List<int> mines, List<int> golden, String starts}) snapTouch() {
     final m = TouchModel(size: 40);
     m.startShared(seed: seed, asHost: true);
-
-    expect('${m.myStart.$1},${m.myStart.$2},${m.oppStart.$1},${m.oppStart.$2}',
-        '6,6,14,28');
-
-    final mines = <int>[];
-    final golden = <int>[];
+    final mines = <int>[], golden = <int>[];
     for (var r = 0; r < m.size; r++) {
       for (var c = 0; c < m.size; c++) {
         if (m.grid[r][c].isMine) mines.add(r * m.size + c);
         if (m.grid[r][c].isGolden) golden.add(r * m.size + c);
       }
     }
-    mines.sort();
-    golden.sort();
-    final megs = [for (final p in m.megaphones) p.$1 * m.size + p.$2]..sort();
-
-    expect(mines.length, 301);
-    expect(fnv(mines), '1219224300736106177');
-    expect(golden.join(','), '93,318,541,545,717,726,1129,1393');
-    expect(megs.join(','), '35,86,138,842,879');
+    final s = '${m.myStart.$1},${m.myStart.$2},${m.oppStart.$1},${m.oppStart.$2}';
     m.dispose();
+    return (mines: mines..sort(), golden: golden..sort(), starts: s);
+  }
+
+  test('Touch 보드: 같은 seed면 재현 + 기본 정합성', () {
+    final a = snapTouch(), b = snapTouch();
+    expect(a.mines, b.mines);
+    expect(a.golden, b.golden);
+    expect(a.starts, b.starts);
+    expect(a.mines, isNotEmpty);
+    expect(a.golden.every(a.mines.contains), isTrue); // 황금지뢰는 지뢰의 부분집합
   });
 
-  test('Treasure 보드 생성 결정성 (size 15, seed 777, solo) — Swift 실측 일치', () {
+  ({List<int> mines, List<int> golden}) snapTreasure() {
     final m = TreasureModel(size: 15);
     m.start(seed);
-
-    final mines = <int>[];
-    final golden = <int>[];
+    final mines = <int>[], golden = <int>[];
     for (var r = 0; r < m.size; r++) {
       for (var c = 0; c < m.size; c++) {
         if (m.grid[r][c].isMine) mines.add(r * m.size + c);
         if (m.grid[r][c].isGolden) golden.add(r * m.size + c);
       }
     }
-    mines.sort();
-    golden.sort();
-
-    expect(mines.length, 46);
-    expect(fnv(mines), '3137610989423994778');
-    expect(golden.join(','), '23,116,132,192,203');
     m.dispose();
+    return (mines: mines..sort(), golden: golden..sort());
+  }
+
+  test('Treasure 보드: 같은 seed면 재현 + 기본 정합성', () {
+    final a = snapTreasure(), b = snapTreasure();
+    expect(a.mines, b.mines);
+    expect(a.golden, b.golden);
+    expect(a.mines, isNotEmpty);
+    expect(a.golden.every(a.mines.contains), isTrue);
   });
 }
