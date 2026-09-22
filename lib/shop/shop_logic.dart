@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../core/local_store.dart';
 import '../core/types.dart';
+import '../progression/daily.dart';
 
 /// 가챠(뽑기) 로직 — Swift RankingStore.draw/drawTriple 이식.
 /// 코인 차감·아이템 지급은 LocalStore에 위임. 확률은 균등(각 1/3).
@@ -39,6 +40,7 @@ class ShopLogic {
     final item = _weightedRandom();
     _grant(item);
     _s.addGachaDraws(1);
+    Daily.bump(DailyKind.draws);
     return item;
   }
 
@@ -58,6 +60,7 @@ class ShopLogic {
       }
     }
     _s.addGachaDraws(3);
+    Daily.bump(DailyKind.draws, by: 3);
     return TripleDrawResult(reels, jackpot);
   }
 }

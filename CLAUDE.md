@@ -79,6 +79,13 @@
 - 홈 종(bell)→NoticeScreen. 안 읽음 점: 홈 initState에서 공지 조회 후 `LocalStore.noticeLastSeen`보다 새 공지가 있으면 표시, 목록 열면 최신 시각 저장(markNoticesSeen)+점 끔.
 - 미이식: 콜드런치 공지 팝업(NoticePopupView)·"오늘은 그만 보기"(목록만 이식).
 
+## 일일 도전과제 — 이식됨
+- 카탈로그: `progression/daily.dart`(DailyChallenge 풀 5종 + 결정적 `forDay`=날짜+kind FNV-1a 해시로 하루 3개, `Daily.bump/state/claim`). Swift DailyChallenge 이식.
+- 저장: `LocalStore`(daily.day/progress(JSON)/claimed, 자정 롤오버 `_rollOverDailyIfNeeded`, `todayKey()` 공개=공지와 공용). 보상 수령=`addCoins`.
+- 노출: 업적 화면 도전과제 탭 **상단** "오늘의 도전과제"(진행바·받기 버튼). 아래는 기존 장기 업적.
+- 이벤트 배선(오늘 뽑힌 kind만 누적): 솔로 클리어→clears, 대전 승→raceWins, 황금지뢰→golden, 뽑기→draws(단일1·×3은 3), 협동 성공→touch. game_screen/versus_screen/shop_logic/coop_controller에서 `Daily.bump`.
+- 테스트: `test/daily_test.dart`(forDay 결정성·회전, bump 가드, claim 1회).
+
 ## 원본에서 아직 미이식(로드맵)
 
-공지 시작 팝업, 일일 도전과제, 합동(coop) 규칙 탭·봇과 대전, 실제 AdMob·IAP 코인팩, AFK 자동몰수, Apple/Google 로그인·계정 삭제, bestTime/재개 스냅샷의 shared_preferences 연동, 익명 uid 데이터 이관, 아이템/코인/칭호 클라우드 백업, 색상 테마(스킨), Game Center, 협동 랭킹(touchScores).
+봇과 대전(오프라인 연습), 실제 AdMob·IAP 코인팩, AFK 자동몰수, Apple/Google 로그인·계정 삭제, bestTime/재개 스냅샷의 shared_preferences 연동, 익명 uid 데이터 이관, 아이템/코인/칭호 클라우드 백업, 색상 테마(스킨), Game Center, 협동 랭킹(touchScores).

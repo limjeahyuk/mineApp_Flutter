@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -39,6 +40,9 @@ class LocalStore {
   static const _kHaptics = 'settings.haptics';
   static const _kFlagHaptics = 'settings.flagHaptics';
   static const _kNoticeLastSeen = 'notice.lastSeenMs';
+  static const _kDailyDay = 'daily.day';
+  static const _kDailyProgress = 'daily.progress'; // JSON {kind:int}
+  static const _kDailyClaimed = 'daily.claimed'; // 콤마로 이은 kind들
 
   /// 첫 실행 시작 지급 — Swift와 동일(자동깃발 10, 레이더 5, 코인 100).
   static const _startFlags = 10;
@@ -84,16 +88,61 @@ class LocalStore {
   void markNoticesSeen(DateTime newest) =>
       _prefs.setInt(_kNoticeLastSeen, newest.millisecondsSinceEpoch);
 
-  // 공지 시작 팝업 — "오늘은 그만 보기"로 막은 공지(키=prefix+id, 값=yyyy-MM-dd).
-  static String _todayKey() {
+  /// 기기 로컬 시간 기준 오늘 날짜 키("yyyy-MM-dd"). 공지·일일 롤오버 공용.
+  static String todayKey() {
     final n = DateTime.now();
     return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
   }
 
+  // 공지 시작 팝업 — "오늘은 그만 보기"로 막은 공지(키=prefix+id, 값=yyyy-MM-dd).
   bool isNoticeDismissedToday(String id) =>
-      _prefs.getString('notice.dismissedToday.$id') == _todayKey();
+      _prefs.getString('notice.dismissedToday.$id') == todayKey();
   void dismissNoticeForToday(String id) =>
-      _prefs.setString('notice.dismissedToday.$id', _todayKey());
+      _prefs.setString('notice.dismissedToday.$id', todayKey());
+
+  // 일일 도전과제 — 날짜가 바뀌면 진행·수령을 비운다. 카탈로그(목표·보상)는 progression/daily.dart.
+  void _rollOverDailyIfNeeded() {
+    if (_prefs.getString(_kDailyDay) == todayKey()) return;
+    _prefs.setString(_kDailyDay, todayKey());
+    _prefs.remove(_kDailyProgress);
+    _prefs.remove(_kDailyClaimed);
+  }
+
+  Map<String, int> _dailyProgressMap() {
+    final s = _prefs.getString(_kDailyProgress);
+    if (s == null || s.isEmpty) return {};
+    final m = jsonDecode(s) as Map<String, dynamic>;
+    return m.map((k, v) => MapEntry(k, (v as num).toInt()));
+  }
+
+  int dailyProgress(String kind) {
+    _rollOverDailyIfNeeded();
+    return _dailyProgressMap()[kind] ?? 0;
+  }
+
+  void bumpDaily(String kind, int amount) {
+    _rollOverDailyIfNeeded();
+    final m = _dailyProgressMap();
+    m[kind] = (m[kind] ?? 0) + amount;
+    _prefs.setString(_kDailyProgress, jsonEncode(m));
+  }
+
+  Set<String> _dailyClaimedSet() {
+    final s = _prefs.getString(_kDailyClaimed);
+    if (s == null || s.isEmpty) return {};
+    return s.split(',').toSet();
+  }
+
+  bool isDailyClaimed(String kind) {
+    _rollOverDailyIfNeeded();
+    return _dailyClaimedSet().contains(kind);
+  }
+
+  void markDailyClaimed(String kind) {
+    _rollOverDailyIfNeeded();
+    final set = _dailyClaimedSet()..add(kind);
+    _prefs.setString(_kDailyClaimed, set.join(','));
+  }
 
   // ── 아이템 인벤토리 ──
   // 키가 없으면(첫 실행) 시작 지급분을 저장해 안정적으로 만든다.

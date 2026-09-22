@@ -5,6 +5,7 @@ import '../core/theme.dart';
 import '../core/types.dart';
 import '../game/board_widget.dart';
 import '../game/item_dock.dart';
+import '../progression/daily.dart';
 import 'firebase_match_service.dart';
 import 'multiplayer.dart';
 import 'race_controller.dart';
@@ -38,7 +39,10 @@ class _VersusScreenState extends State<VersusScreen> {
     ctrl.game.onConsumeAutoFlag = inv.consumeFlag;
     ctrl.game.radarSupplier = () => inv.ownedRadars;
     ctrl.game.onConsumeRadar = inv.consumeRadar;
-    ctrl.game.onGoldenMineFound = () => inv.addGoldenMines(1);
+    ctrl.game.onGoldenMineFound = () {
+      inv.addGoldenMines(1);
+      Daily.bump(DailyKind.golden);
+    };
     ctrl.addListener(_maybeRecordResult);
     ctrl.start(widget.mode);
   }
@@ -52,6 +56,7 @@ class _VersusScreenState extends State<VersusScreen> {
     switch (ctrl.result!) {
       case RaceResult.win:
         inv.recordRaceWin();
+        Daily.bump(DailyKind.raceWins);
       case RaceResult.lose:
         inv.recordRaceLoss();
       case RaceResult.draw:

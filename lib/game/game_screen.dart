@@ -4,6 +4,7 @@ import '../core/game_model.dart';
 import '../core/local_store.dart';
 import '../core/theme.dart';
 import '../core/types.dart';
+import '../progression/daily.dart';
 import '../ranking/ranking_service.dart';
 import 'board_widget.dart';
 import 'item_dock.dart';
@@ -36,11 +37,15 @@ class _GameScreenState extends State<GameScreen> {
     game.onConsumeAutoFlag = inv.consumeFlag;
     game.radarSupplier = () => inv.ownedRadars;
     game.onConsumeRadar = inv.consumeRadar;
-    game.onGoldenMineFound = () => inv.addGoldenMines(1);
+    game.onGoldenMineFound = () {
+      inv.addGoldenMines(1);
+      Daily.bump(DailyKind.golden);
+    };
     // 솔로 클리어 → 로컬 기록 + (신기록이면) 온라인 랭킹 제출 + 무아이템 하드 클리어 집계.
     game.onSoloWin = (d, timeSec, noItem) {
       final isBest = inv.recordSolo(d, timeSec);
       if (noItem) inv.recordNoItemHardClear(d);
+      Daily.bump(DailyKind.clears);
       if (isBest) {
         RankingService().submitBest(ScoreEntry(
           name: inv.nickname,

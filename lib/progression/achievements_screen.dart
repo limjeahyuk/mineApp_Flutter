@@ -2,12 +2,13 @@ import 'package:flutter/material.dart' hide Title;
 
 import '../core/local_store.dart';
 import '../core/theme.dart';
+import 'daily.dart';
 import 'title.dart';
 
 /// 업적 화면 — 도전과제(진행/달성) + 칭호(장착·구매). Swift AchievementsView 이식.
 ///
-/// ponytail: 일일 도전과제(DailyChallenge)와 협동/테마 조건 칭호는 미이식
-/// (협동·테마 목표는 항상 잠금 표시). 나머지 통계 기반 업적은 정상 평가.
+/// 일일 도전과제(daily.dart)는 도전과제 탭 상단에 노출. 테마 조건 칭호만 미이식
+/// (테마 목표는 항상 잠금 표시). 나머지 통계 기반 업적은 정상 평가.
 class AchievementsScreen extends StatefulWidget {
   const AchievementsScreen({super.key});
 
@@ -117,15 +118,171 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
     );
   }
 
-  // ── 도전과제 탭 ──
+  // ── 도전과제 탭 (위: 오늘의 일일, 아래: 장기 업적) ──
+  static const _gold = Color(0xFFF5C23D); // (0.96,0.76,0.24)
+
   Widget _challengesTab(AppTheme t) {
     final list = Title.achievements;
-    return ListView.separated(
+    final done = list.where((x) => _s.isTitleOwned(x.id)).length;
+    return ListView(
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-      itemCount: list.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (_, i) => _challengeRow(t, list[i]),
+      children: [
+        _dailySection(t),
+        const SizedBox(height: 20),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10, left: 2),
+          child: Text('업적 · 달성 $done / 전체 ${list.length}',
+              style: TextStyle(
+                  color: t.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+        ),
+        for (var i = 0; i < list.length; i++) ...[
+          if (i > 0) const SizedBox(height: 10),
+          _challengeRow(t, list[i]),
+        ],
+      ],
     );
+  }
+
+  Widget _dailySection(AppTheme t) {
+    final today = DailyChallenge.forDay(LocalStore.todayKey());
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text('오늘의 도전과제',
+                style: TextStyle(
+                    color: t.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
+            const Spacer(),
+            const Text('🪙', style: TextStyle(fontSize: 13)),
+            const SizedBox(width: 4),
+            Text('${_s.coins}',
+                style: TextStyle(
+                    color: t.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 10),
+        for (var i = 0; i < today.length; i++) ...[
+          if (i > 0) const SizedBox(height: 10),
+          _dailyRow(t, today[i]),
+        ],
+        const SizedBox(height: 8),
+        Text('매일 자정에 새로 갱신돼요. 달성하면 코인을 받을 수 있어요.',
+            style: TextStyle(color: t.textTertiary, fontSize: 11)),
+      ],
+    );
+  }
+
+  Widget _dailyRow(AppTheme t, DailyChallenge c) {
+    final s = Daily.state(c.kind);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+          color: t.fill.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(14)),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+                color: (s.done ? _gold : t.textSecondary).withValues(alpha: 0.16),
+                shape: BoxShape.circle),
+            child: Icon(c.icon,
+                size: 20, color: s.done ? _gold : t.textSecondary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(c.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: t.text,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                if (s.claimed)
+                  Row(
+                    children: [
+                      Icon(Icons.verified, size: 13, color: t.textTertiary),
+                      const SizedBox(width: 4),
+                      Text('보상을 받았어요',
+                          style: TextStyle(
+                              color: t.textTertiary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600)),
+                    ],
+                  )
+                else ...[
+                  _progressBar(t, s.current, s.target, s.done, _gold),
+                  const SizedBox(height: 4),
+                  Text('${s.current} / ${s.target}',
+                      style: TextStyle(
+                          color: t.textTertiary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          _dailyTrailing(t, c, s),
+        ],
+      ),
+    );
+  }
+
+  Widget _dailyTrailing(AppTheme t, DailyChallenge c,
+      ({int current, int target, bool done, bool claimed}) s) {
+    if (s.claimed) {
+      return Icon(Icons.check_circle,
+          size: 22, color: _gold.withValues(alpha: 0.55));
+    }
+    if (s.done) {
+      return GestureDetector(
+        onTap: () => _claimDaily(c),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+          decoration:
+              BoxDecoration(color: _gold, borderRadius: BorderRadius.circular(20)),
+          child: Text('받기 +${c.reward}',
+              style: const TextStyle(
+                  color: Color(0xFF402900),
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold)),
+        ),
+      );
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('🪙', style: TextStyle(fontSize: 12)),
+        const SizedBox(width: 3),
+        Text('+${c.reward}',
+            style: TextStyle(
+                color: t.textTertiary,
+                fontSize: 12,
+                fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
+  void _claimDaily(DailyChallenge c) {
+    final reward = Daily.claim(c.kind);
+    if (reward != null) {
+      _toast('🪙 $reward 코인을 받았어요!');
+      setState(() {});
+    }
   }
 
   Widget _challengeRow(AppTheme t, Title title) {

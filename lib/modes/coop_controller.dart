@@ -6,6 +6,7 @@ import '../core/board.dart';
 import '../core/haptics.dart';
 import '../core/types.dart';
 import '../multiplayer/multiplayer.dart';
+import '../progression/daily.dart';
 import 'touch_model.dart';
 
 enum CoopFlow { searching, starting, racing, finished }
@@ -117,6 +118,7 @@ class CoopController extends ChangeNotifier {
         if (model.state == GameState.won) {
           service.report(
               progress: 1, phase: RacerPhase.won, elapsed: model.elapsed, score: 0);
+          Daily.bump(DailyKind.touch);
           _finish(RaceResult.win);
         } else if (model.state == GameState.lost) {
           _finish(RaceResult.lose);
