@@ -59,7 +59,7 @@
 
 ## 협동·보물찾기 모드 — 이식됨
 - 모델은 기존 `modes/touch_model.dart`(협동 안개 공유보드)·`modes/treasure_model.dart`(중앙 보물 경쟁). 컨트롤러/화면 신규:
-  - 협동: `modes/coop_controller.dart` + `coop_screen.dart`(`FirebaseMatchService(kind:'touch')`, 안개 렌더 = `isVisible` 밖은 어둡게, 만나면 공동 승리).
+  - 협동: `modes/coop_controller.dart` + `coop_screen.dart`(`FirebaseMatchService(kind:'touch')`, 안개 렌더 = `isVisible` 밖은 어둡게, 만나면 공동 승리). **보드 80×80(원본과 동일, 크로스플레이 정합)** — 화면보다 크므로 `InteractiveViewer(constrained:false)` 팬/줌 + 판 시작 시 내 시작점 자동 센터링(고정 셀 28px). `TouchModel` 타이머는 매초 rebuild 방지 위해 elapsed만 증가(알림 X). 2 시뮬 실측 검증됨.
   - 보물: `modes/treasure_controller.dart` + `treasure_screen.dart`(`kind:'treasure'`, 중앙 💎 먼저 열면 승리, 나·상대 진행바).
 - 대전 메뉴 게임유형 탭(`GameType.mine/treasure/coop`)이 실제 라우팅 — 랜덤/방만들기/코드참가가 선택 유형의 화면을 연다.
 - ponytail 미이식: 협동 지뢰 페널티 상대 동기화·확성기 브로드캐스트·stun 전파(핵심 reveal/flag/보드 동기화만), 보물 깃발 동기화(TreasureModel엔 onPushFlag 없음).
