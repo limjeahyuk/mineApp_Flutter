@@ -590,7 +590,9 @@ class TouchModel extends ChangeNotifier {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (state == GameState.playing && elapsed < 9999) {
         elapsed++;
-        notifyListeners();
+        // ponytail: 80×80 보드(6400칸)를 매초 통째로 rebuild하지 않도록 elapsed는
+        // 알림 없이 증가만 시킨다. 협동 화면은 경과시간을 표시하지 않고, 결과 보고용
+        // elapsed는 실제 조작(reveal/원격 반영)마다 오는 notify로 함께 갱신된다.
       }
     });
   }

@@ -20,6 +20,10 @@ class _CoopScreenState extends State<CoopScreen> {
       CoopController(FirebaseMatchService(kind: 'touch'));
   bool flagMode = false;
 
+  // 80×80 큰 보드는 화면보다 크므로 팬/줌으로 본다. 판 시작 시 내 시작점을 화면 중앙에 한 번 맞춘다.
+  final TransformationController _tc = TransformationController();
+  bool _centered = false;
+
   @override
   void initState() {
     super.initState();
@@ -30,6 +34,7 @@ class _CoopScreenState extends State<CoopScreen> {
   void dispose() {
     ctrl.leave();
     ctrl.dispose();
+    _tc.dispose();
     super.dispose();
   }
 
@@ -194,29 +199,42 @@ class _CoopScreenState extends State<CoopScreen> {
   }
 
   Widget _board(AppTheme t, TouchModel m) {
+    const side = 28.0; // 고정 셀 크기(Swift 30에 준함) — 보드는 화면보다 크고 팬/줌으로 본다.
+    const step = side + 1.0; // 셀 마진 0.5px 양쪽(=1px)
     return LayoutBuilder(builder: (context, box) {
-      // 셀마다 좌우 0.5px 마진(=1px)을 빼야 오버플로가 안 난다.
-      final side = ((box.maxWidth - 8) / m.size - 1.0).clamp(6.0, 40.0);
-      return Center(
-        child: InteractiveViewer(
-          minScale: 1,
-          maxScale: 6,
-          child: Container(
-            padding: const EdgeInsets.all(4),
-            color: t.boardFrame,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (var r = 0; r < m.size; r++)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var c = 0; c < m.size; c++)
-                        _cell(t, m, r, c, side),
-                    ],
-                  ),
-              ],
-            ),
+      // 판 시작 시 내 시작점을 뷰포트 중앙으로 한 번 이동(다음 판이면 다시).
+      if (ctrl.flow == CoopFlow.racing && !_centered) {
+        _centered = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final cx = 4 + m.myStart.$2 * step + side / 2;
+          final cy = 4 + m.myStart.$1 * step + side / 2;
+          _tc.value = Matrix4.translationValues(
+              box.maxWidth / 2 - cx, box.maxHeight / 2 - cy, 0);
+        });
+      } else if (ctrl.flow == CoopFlow.searching ||
+          ctrl.flow == CoopFlow.starting) {
+        _centered = false;
+      }
+      return InteractiveViewer(
+        transformationController: _tc,
+        constrained: false, // 자식이 화면보다 커도 됨 → 오버플로 대신 팬
+        minScale: 0.3,
+        maxScale: 4,
+        boundaryMargin: const EdgeInsets.all(double.infinity),
+        child: Container(
+          padding: const EdgeInsets.all(4),
+          color: t.boardFrame,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var r = 0; r < m.size; r++)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var c = 0; c < m.size; c++) _cell(t, m, r, c, side),
+                  ],
+                ),
+            ],
           ),
         ),
       );

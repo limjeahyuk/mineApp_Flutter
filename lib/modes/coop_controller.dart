@@ -16,7 +16,7 @@ enum CoopFlow { searching, starting, racing, finished }
 ///
 /// ponytail: 지뢰 페널티 상대 동기화·확성기 브로드캐스트는 미이식(핵심 reveal/flag 동기화만).
 class CoopController extends ChangeNotifier {
-  CoopController(this.service, {int size = 40}) : model = TouchModel(size: size) {
+  CoopController(this.service, {int size = 80}) : model = TouchModel(size: size) {
     model.addListener(_onChange);
     service.onRoomCode = (c) {
       roomCode = c;
