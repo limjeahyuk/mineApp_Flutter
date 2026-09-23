@@ -1,0 +1,6 @@
+{
+  "firestore": {
+    "database": "mineappdatabase",
+    "rules": "firestore.rules"
+  }
+}

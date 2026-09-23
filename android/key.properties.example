@@ -1,0 +1,7 @@
+# 릴리스 서명 키 설정 예시. 실제 값으로 채워 android/key.properties 로 복사하세요(커밋 금지).
+# 키스토어 생성:
+#   keytool -genkey -v -keystore ~/mineapp-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias mineapp
+storePassword=여기에_키스토어_비밀번호
+keyPassword=여기에_키_비밀번호
+keyAlias=mineapp
+storeFile=/Users/insplanet/mineapp-release.jks

@@ -1,0 +1,44 @@
+rules_version = '2';
+
+// 지뢰찾기 아레나 — Firestore 보안 규칙 (named DB: mineappdatabase)
+// 정책 A: 익명 포함 로그인 사용자만 접근. 컬렉션별로 필요한 범위만 연다.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    // 개인 랭킹 — 문서 id = "{deviceId}_{difficulty}". 로그인 사용자 읽기/쓰기.
+    match /scores/{id} {
+      allow read, write: if signedIn();
+    }
+
+    // 협동('너에게 닿기를') 랭킹 — 문서 id = deviceId.
+    match /touchScores/{id} {
+      allow read, write: if signedIn();
+    }
+
+    // 실시간 대전 매칭 신호(방/큐). 로그인 사용자 읽기/쓰기(하위 문서 포함).
+    match /matches/{id} {
+      allow read, write: if signedIn();
+      match /{document=**} {
+        allow read, write: if signedIn();
+      }
+    }
+
+    // 개인 클라우드 백업(코인·아이템·기록) — 본인 문서만.
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // 선물함 — 로그인 사용자 읽기 + 수령 표시 쓰기.
+    match /mailGifts/{id} {
+      allow read, write: if signedIn();
+    }
+
+    // 공지 — 로그인 사용자 읽기 전용. 작성은 콘솔(관리자 SDK, 규칙 우회)만.
+    match /notices/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+  }
+}
