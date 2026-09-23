@@ -323,4 +323,51 @@ class LocalStore {
     _prefs.setString(_kEquippedTitleId, id);
     equippedTitleName = name;
   }
+
+  // ── 클라우드 백업/복원 ──
+  // 계정 연동 시 users/{uid}에 저장할 "영구 진행" 키들(닉네임·재화·아이템·칭호·기록·전적).
+  // 일일/공지/광고-일자처럼 날마다 리셋되는 임시 상태는 제외한다.
+  // ponytail: 전환(switch) 시 클라우드 값으로 덮어쓴다. 기기 병합(최고기록 min 등)은 미이식.
+  List<String> get _backupKeys => [
+        _kNickname, _kEquippedTitle, _kEquippedTitleId, _kOwnedTitles,
+        _kCoins, _kOwnedFlags, _kOwnedRadars, _kOwnedMegaphones,
+        _kRaceWins, _kRaceLosses, _kRaceDraws,
+        _kCurStreak, _kBestStreak, _kGachaDraws, _kJackpots, _kGoldenMines,
+        _kNoItemExpert, _kNoItemUltimate,
+        for (final d in Difficulty.values) ...[_bestKey(d), _countKey(d)],
+      ];
+
+  /// 백업용 스냅샷(값이 있는 키만).
+  Map<String, Object> exportBackup() {
+    final m = <String, Object>{};
+    for (final k in _backupKeys) {
+      final v = _prefs.get(k);
+      if (v != null) m[k] = v;
+    }
+    return m;
+  }
+
+  /// 클라우드 스냅샷을 로컬에 반영(전환/복원). 타입에 맞게 기록한다.
+  void restoreBackup(Map<String, dynamic> data) {
+    for (final k in _backupKeys) {
+      if (!data.containsKey(k)) continue;
+      final v = data[k];
+      if (v is int) {
+        _prefs.setInt(k, v);
+      } else if (v is String) {
+        _prefs.setString(k, v);
+      } else if (v is bool) {
+        _prefs.setBool(k, v);
+      } else if (v is List) {
+        _prefs.setStringList(k, v.map((e) => e.toString()).toList());
+      }
+    }
+  }
+
+  /// 계정 삭제 후 로컬 초기화 — deviceId만 남기고 진행/재화/기록을 비운다.
+  Future<void> wipeLocalData() async {
+    final keep = _prefs.getString(_kDeviceId);
+    await _prefs.clear();
+    if (keep != null) await _prefs.setString(_kDeviceId, keep);
+  }
 }

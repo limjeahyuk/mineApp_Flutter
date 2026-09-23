@@ -66,8 +66,23 @@
 
 ## 환경설정 · 내 정보 — 이식됨
 - 환경설정: `settings/settings_screen.dart` — 화면 테마(시스템/라이트/다크) + 게임 햅틱 2종 on/off. 테마는 전역 `themeModeNotifier`(theme.dart)+`setThemeMode`로 즉시 반영, `main.dart`의 `MaterialApp.themeMode`가 구독. 저장은 `LocalStore.themeMode`. 햅틱은 `Haptics.isEnabled/isFlagEnabled`(LocalStore 백업)로 게이트. 색상 테마(스킨) 갤러리는 미이식(클래식 무채색만).
-- 내 정보: `profile/profile_screen.dart` — 닉네임 변경(다이얼로그, 최대 16자) + 장착 칭호 배지(`equippedTitleId`→Title.all 조회, rarity 색) + 보유(코인·자동깃발·레이더) + 난이도별 솔로 기록(soloBest/soloClearCount). 계정 연동(Apple/Google)·계정 삭제는 플랫폼 연동 미이식이라 생략.
+- 내 정보: `profile/profile_screen.dart` — 닉네임 변경(다이얼로그, 최대 16자) + 장착 칭호 배지(`equippedTitleId`→Title.all 조회, rarity 색) + 보유(코인·자동깃발·레이더) + 난이도별 솔로 기록(soloBest/soloClearCount) + **계정 섹션**(아래 참고).
 - 홈 하단 내비 내 정보→ProfileScreen, 설정→SettingsScreen.
+
+## 계정(Apple/Google 로그인) · 계정 삭제 — 이식됨
+- 코드: `core/account_auth.dart`(LinkOutcome sealed + `firebaseLinkOrSignIn`=익명이면 link 승격, `credential-already-in-use`면 signIn 전환), `core/apple_auth.dart`(sign_in_with_apple, crypto nonce), `core/google_auth.dart`(google_sign_in **v7** API: `instance.initialize/authenticate`, idToken-only), `core/account_deletion.dart`(재인증+Apple revoke → 클라우드 삭제 → user.delete → 로컬 wipe → 재익명), `core/cloud_backup.dart`(users/{uid} 백업/복원). Swift Auth/* 이식.
+- 백업 데이터: `LocalStore.exportBackup/restoreBackup`(닉네임·재화·아이템·칭호·기록·전적; 일일/공지/광고일자 제외). linked→backup, switched→restore. `wipeLocalData()`는 deviceId만 남기고 clear. **ponytail: 전환 시 클라우드 값으로 덮어쓴다(기기 병합 미이식).**
+- UI: ProfileScreen 계정 섹션 — 미연동이면 Apple(iOS만)·Google 버튼, 항상 "계정 삭제(회원탈퇴)"(확인 다이얼로그). 결과 토스트.
+- iOS 설정: `Runner.entitlements`에 `com.apple.developer.applesignin`(Default), `Info.plist`에 Google REVERSED_CLIENT_ID URL scheme 추가. 웹 클라이언트 id는 `google_auth.dart` 상수(공개 OAuth id).
+- **콘솔/수동 필요(미완)**: Firebase Auth에서 Apple·Google provider 활성화, Apple Developer의 App ID에 Sign in with Apple capability + 프로비저닝, **Android Google 로그인은 Firebase 콘솔에 릴리스/디버그 SHA-1 등록 필요**(현 google-services.json엔 type1 클라이언트 없음). iOS 번들 id 불일치 주의: firebase_options=`com.imjaehyeog.MineApp` vs Xcode=`com.imjaehyeog.mineApp`.
+- 테스트: `test/backup_test.dart`(export→restore 왕복 보존).
+
+## Firebase 보안 규칙 — 코드화(rules-as-code)
+- `firestore.rules` + `firebase.json`(named DB `mineappdatabase` 타깃) + `.firebaserc`(mineapp-aabc8). 정책 A=로그인(익명 포함)만. 컬렉션: scores/touchScores/matches(+하위)/mailGifts=로그인 읽기·쓰기, users/{uid}=본인만, notices=로그인 읽기·쓰기 금지(콘솔만).
+- 배포: `firebase deploy --only firestore:rules`(named DB로 나감). `--dry-run` 컴파일 확인됨. **실제 게시는 프로덕션 영향이라 사용자 확인 후 실행.** RTDB(`boards`) 규칙은 별도(미포함).
+
+## Android 릴리스 서명 — 플러밍 이식
+- `android/app/build.gradle.kts`: `key.properties`(gitignore됨) 있으면 릴리스 키, 없으면 디버그 폴백. `android/key.properties.example` 템플릿 + keytool 명령 포함. **키스토어 생성/비밀번호는 사용자 수동.**
 
 ## 가이드 — 이식됨
 - `guide/guide_screen.dart` — Swift TutorialView 이식. 상단 탭 3개(튜토리얼/공략/멀티) + PageView 스와이프. 순수 정적 콘텐츠(로직 없음), 텍스트는 원본 그대로.
@@ -95,4 +110,6 @@
 
 ## 원본에서 아직 미이식(로드맵)
 
-협동·보물 봇, 실제 AdMob·IAP 코인팩, AFK 자동몰수, Apple/Google 로그인·계정 삭제, bestTime/재개 스냅샷의 shared_preferences 연동, 익명 uid 데이터 이관, 아이템/코인/칭호 클라우드 백업, 색상 테마(스킨), Game Center, 협동 랭킹(touchScores).
+협동·보물 봇, 실제 AdMob·IAP 코인팩, AFK 자동몰수, bestTime/재개 스냅샷의 shared_preferences 연동, 색상 테마(스킨), Game Center, 협동 랭킹(touchScores).
+
+코드는 됐고 **콘솔/수동만 남은 것**: Firebase 규칙 실제 게시(위 dry-run 통과), 릴리스 키스토어 생성, Firebase Auth provider 활성화 + Apple capability/프로비저닝 + Android SHA-1 등록.

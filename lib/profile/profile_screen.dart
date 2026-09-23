@@ -1,14 +1,19 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart' hide Title;
 
+import '../core/account_auth.dart';
+import '../core/account_deletion.dart';
+import '../core/apple_auth.dart';
 import '../core/board.dart';
+import '../core/cloud_backup.dart';
+import '../core/google_auth.dart';
 import '../core/local_store.dart';
 import '../core/theme.dart';
 import '../progression/title.dart';
 
-/// 내 정보 화면 — 닉네임(변경) + 장착 칭호 + 보유(코인·아이템) + 난이도별 솔로 기록.
+/// 내 정보 화면 — 닉네임(변경) + 장착 칭호 + 보유(코인·아이템) + 난이도별 솔로 기록 + 계정.
 /// Swift StartView.ProfileView 이식.
-///
-/// ponytail: 계정 연동(Apple/Google)·계정 삭제는 플랫폼 연동 미이식이라 생략.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -18,6 +23,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final LocalStore _s = LocalStore.shared;
+  bool _busy = false;
 
   Title? get _equippedTitle {
     final id = _s.equippedTitleId;
@@ -78,6 +84,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _walletSection(t),
                   const SizedBox(height: 22),
                   _recordList(t),
+                  const SizedBox(height: 22),
+                  _accountSection(t),
                 ],
               ),
             ),
@@ -270,4 +278,156 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
+  // ── 계정 ──
+  Widget _accountSection(AppTheme t) {
+    final linkedApple = AppleAuth.isLinked;
+    final linkedGoogle = GoogleAuth.isLinked;
+    final linked = linkedApple || linkedGoogle;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionLabel(t, '계정'),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+              color: t.fill, borderRadius: BorderRadius.circular(12)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(linked ? Icons.verified_user : Icons.person_outline,
+                      size: 18, color: t.textSecondary),
+                  const SizedBox(width: 8),
+                  Text(
+                      linkedApple
+                          ? 'Apple 계정 연동됨'
+                          : linkedGoogle
+                              ? 'Google 계정 연동됨'
+                              : '게스트(익명)',
+                      style: TextStyle(
+                          color: t.text,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                  linked
+                      ? '진행 내용이 계정에 저장돼요. 새 기기에서 같은 계정으로 로그인하면 이어집니다.'
+                      : '로그인하면 진행 내용이 계정에 저장돼 기기를 바꿔도 이어집니다.',
+                  style: TextStyle(color: t.textTertiary, fontSize: 11)),
+              const SizedBox(height: 14),
+              if (!linked) ...[
+                if (Platform.isIOS)
+                  _authButton(t, '  Apple로 로그인', Icons.apple, Colors.black,
+                      Colors.white, _linkApple),
+                if (Platform.isIOS) const SizedBox(height: 8),
+                _authButton(t, '  Google로 로그인', Icons.g_mobiledata,
+                    Colors.white, Colors.black87, _linkGoogle,
+                    border: true),
+              ],
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _busy ? null : _confirmDelete,
+                child: Text('계정 삭제(회원탈퇴)',
+                    style: TextStyle(
+                        color: t.textTertiary,
+                        fontSize: 12,
+                        decoration: TextDecoration.underline)),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _authButton(AppTheme t, String label, IconData icon, Color bg,
+          Color fg, VoidCallback onTap,
+          {bool border = false}) =>
+      SizedBox(
+        width: double.infinity,
+        height: 46,
+        child: ElevatedButton.icon(
+          onPressed: _busy ? null : onTap,
+          icon: Icon(icon, color: fg, size: 22),
+          label: Text(label,
+              style: TextStyle(
+                  color: fg, fontSize: 15, fontWeight: FontWeight.w700)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: bg,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: border
+                    ? BorderSide(color: t.textTertiary.withValues(alpha: 0.4))
+                    : BorderSide.none),
+          ),
+        ),
+      );
+
+  Future<void> _linkApple() => _runLogin(AppleAuth.signIn);
+  Future<void> _linkGoogle() => _runLogin(GoogleAuth.signIn);
+
+  Future<void> _runLogin(Future<LinkOutcome> Function() login) async {
+    setState(() => _busy = true);
+    final outcome = await login();
+    if (!mounted) return;
+    switch (outcome) {
+      case LinkLinked(:final uid, :final suggestedName):
+        if (suggestedName != null && _s.nickname == '플레이어') {
+          _s.nickname = suggestedName.length > 16
+              ? suggestedName.substring(0, 16)
+              : suggestedName;
+        }
+        await CloudBackup.backup(uid);
+        if (mounted) _toast('계정이 연동되었어요');
+      case LinkSwitched(:final uid):
+        await CloudBackup.restore(uid);
+        if (mounted) _toast('기존 계정으로 전환했어요');
+      case LinkCancelled():
+        break;
+      case LinkFailed():
+        _toast('로그인에 실패했어요. 다시 시도해 주세요.');
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _confirmDelete() async {
+    final t = AppTheme.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: t.surface,
+        title: Text('계정 삭제', style: TextStyle(color: t.text)),
+        content: Text(
+            '계정과 모든 진행 내용(랭킹·재화·기록)이 영구 삭제돼요. 되돌릴 수 없어요. 계속할까요?',
+            style: TextStyle(color: t.textSecondary)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('취소')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('삭제', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _busy = true);
+    try {
+      await AccountDeletion.deleteAccount();
+      if (mounted) _toast('계정을 삭제했어요');
+    } on DeletionCancelled {
+      if (mounted) _toast('본인 확인이 취소되어 삭제하지 않았어요');
+    } catch (_) {
+      if (mounted) _toast('삭제에 실패했어요. 다시 시도해 주세요.');
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  void _toast(String msg) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(msg)));
 }

@@ -14,6 +14,18 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- Google 로그인 콜백: GoogleService-Info의 REVERSED_CLIENT_ID(iOS 클라이언트 역순). -->
+				<string>com.googleusercontent.apps.470995040821-9b5mt4bfebc47ippul9240q0fo7p31co</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleName</key>
 	<string>mine_app</string>
 	<key>CFBundlePackageType</key>
