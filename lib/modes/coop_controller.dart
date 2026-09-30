@@ -8,6 +8,8 @@ import '../core/types.dart';
 import '../multiplayer/multiplayer.dart';
 import '../progression/daily.dart';
 import 'touch_model.dart';
+import '../ranking/ranking_service.dart';
+import '../core/local_store.dart';
 
 enum CoopFlow { searching, starting, racing, finished }
 
@@ -120,6 +122,14 @@ class CoopController extends ChangeNotifier {
           service.report(
               progress: 1, phase: RacerPhase.won, elapsed: model.elapsed, score: 0);
           Daily.bump(DailyKind.touch);
+          final inv = LocalStore.shared;
+          if (inv.recordTouch(model.elapsed)) {
+            RankingService().submitTouchBest(
+                name: inv.nickname,
+                timeSec: model.elapsed,
+                deviceId: inv.deviceId,
+                title: inv.equippedTitleName);
+          }
           _finish(RaceResult.win);
         } else if (model.state == GameState.lost) {
           _finish(RaceResult.lose);

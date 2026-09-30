@@ -10,10 +10,15 @@ import 'account_auth.dart';
 /// Sign in with Apple ↔ Firebase 연동. Swift AppleAuthService 이식.
 /// 익명 사용자를 Apple 계정으로 승격(link)하거나, 이미 영구계정이면 그쪽으로 전환(signIn).
 class AppleAuth {
-  static bool get isLinked =>
-      FirebaseAuth.instance.currentUser?.providerData
-          .any((p) => p.providerId == 'apple.com') ??
-      false;
+  static bool get isLinked {
+    try {
+      return FirebaseAuth.instance.currentUser?.providerData
+              .any((p) => p.providerId == 'apple.com') ??
+          false;
+    } catch (_) {
+      return false; // Firebase 미초기화(테스트 등)
+    }
+  }
 
   static Future<LinkOutcome> signIn() async {
     try {

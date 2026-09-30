@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../core/local_store.dart';
@@ -22,10 +23,10 @@ class DailyChallenge {
   /// 전체 풀 — 매일 이 중 [dailyCount]개가 뽑힌다. 추가/튜닝은 여기 한 곳에서.
   static const pool = <DailyChallenge>[
     DailyChallenge(DailyKind.clears, '아무 난이도나 3판 클리어', 3, 20, Icons.sports_score),
-    DailyChallenge(DailyKind.raceWins, '대전에서 1승 하기', 1, 25, Icons.bolt),
-    DailyChallenge(DailyKind.golden, '황금지뢰 5개 발견하기', 5, 20, Icons.workspace_premium),
-    DailyChallenge(DailyKind.draws, '뽑기 1회 돌리기', 1, 15, Icons.card_giftcard),
-    DailyChallenge(DailyKind.touch, "'너에게 닿기를' 1회 성공", 1, 25, Icons.handshake),
+    DailyChallenge(DailyKind.raceWins, '대전에서 1승 하기', 1, 25, CupertinoIcons.bolt_fill),
+    DailyChallenge(DailyKind.golden, '황금지뢰 5개 발견하기', 5, 20, CupertinoIcons.checkmark_seal_fill),
+    DailyChallenge(DailyKind.draws, '뽑기 1회 돌리기', 1, 15, CupertinoIcons.gift_fill),
+    DailyChallenge(DailyKind.touch, '‘너에게 닿기를’ 1회 성공', 1, 25, Icons.sign_language_rounded),
   ];
 
   static const dailyCount = 3;
@@ -72,6 +73,18 @@ class Daily {
       done: cur >= c.goal,
       claimed: LocalStore.shared.isDailyClaimed(kind.name),
     );
+  }
+
+  /// 오늘 받을 수 있는(달성·미수령) 도전과제 수 — 홈 업적 아이콘 빨간 점.
+  static int claimableCount() {
+    try {
+      return DailyChallenge.forDay(LocalStore.todayKey()).where((c) {
+        final s = state(c.kind);
+        return s.done && !s.claimed;
+      }).length;
+    } catch (_) {
+      return 0;
+    }
   }
 
   /// 보상 수령 — 달성했고 미수령이면 코인 지급 + 수령 처리. 받은 코인 반환(불가면 null).

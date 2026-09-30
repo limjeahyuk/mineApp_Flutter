@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
 import 'local_store.dart';
@@ -25,6 +26,50 @@ void setThemeMode(ThemeMode m) {
   themeModeNotifier.value = m;
 }
 
+/// 코인으로 구매하는 색상 테마(스킨) — Swift ColorTheme 이식.
+/// 무채색 표면(배경·카드·보드 칸)에 대표색을 옅게 섞는다. 글자색은 항상 무채색.
+class ColorThemeDef {
+  const ColorThemeDef(this.id, this.name, this.r, this.g, this.b, this.tinted);
+  final String id;
+  final String name;
+  final double r, g, b;
+  final bool tinted;
+
+  Color get accent => Color.fromRGBO(
+      (r * 255).round(), (g * 255).round(), (b * 255).round(), 1);
+
+  /// 무채색 white 값에 대표색을 섞은 표면색(다크 0.18, 라이트 0.14).
+  Color tintedSurface(double v, bool dark) {
+    int c(double x) => (x * 255).round().clamp(0, 255);
+    if (!tinted) return Color.fromARGB(255, c(v), c(v), c(v));
+    final mix = dark ? 0.18 : 0.14;
+    return Color.fromARGB(255, c(v * (1 - mix) + r * mix),
+        c(v * (1 - mix) + g * mix), c(v * (1 - mix) + b * mix));
+  }
+
+  static const classic = ColorThemeDef('classic', '클래식', 0.5, 0.5, 0.5, false);
+  static const all = <ColorThemeDef>[
+    classic,
+    ColorThemeDef('ocean', '오션', 0.20, 0.55, 0.90, true),
+    ColorThemeDef('forest', '포레스트', 0.18, 0.62, 0.50, true),
+    ColorThemeDef('sunset', '선셋', 0.95, 0.55, 0.30, true),
+    ColorThemeDef('lavender', '라벤더', 0.60, 0.50, 0.90, true),
+    ColorThemeDef('rose', '로즈', 0.92, 0.45, 0.62, true),
+  ];
+
+  static ColorThemeDef named(String id) =>
+      all.firstWhere((t) => t.id == id, orElse: () => classic);
+}
+
+/// 지금 적용 중인 색상 테마 id — 바꾸면 앱 전체가 다시 그려진다(main이 구독).
+final ValueNotifier<String> colorThemeNotifier =
+    ValueNotifier(LocalStore.shared.colorThemeId);
+
+void setColorTheme(String id) {
+  LocalStore.shared.colorThemeId = id;
+  colorThemeNotifier.value = id;
+}
+
 /// Swift `Theme`(Core/Theme.swift) 이식 — 다크 우선 + 라이트 적응, 무채색(회색조) 기반.
 /// 색상 테마(틴트 스킨)는 클래식(무채색)만 이식(원본 기본값). 글자색은 항상 무채색.
 class AppTheme {
@@ -39,7 +84,12 @@ class AppTheme {
     return Color.fromARGB(255, n, n, n);
   }
 
-  Color _g(double d, double l) => _white(dark ? d : l);
+  /// 표면용(색상 테마 틴트 적용) — Swift Theme.dyn.
+  Color _g(double d, double l) =>
+      ColorThemeDef.named(colorThemeNotifier.value).tintedSurface(dark ? d : l, dark);
+
+  /// 글자용 무채색 — Swift Theme.ntr.
+  Color _n(double d, double l) => _white(dark ? d : l);
 
   // 배경 / 표면
   Color get bg => _g(0.085, 0.96);
@@ -49,9 +99,9 @@ class AppTheme {
   Color get border => _g(0.34, 0.80);
 
   // 텍스트 (무채색)
-  Color get text => _g(0.96, 0.12);
-  Color get textSecondary => _g(0.60, 0.40);
-  Color get textTertiary => _g(0.45, 0.55);
+  Color get text => _n(0.96, 0.12);
+  Color get textSecondary => _n(0.60, 0.40);
+  Color get textTertiary => _n(0.45, 0.55);
 
   // 게임 보드
   Color get boardFrame => _g(0.16, 0.78);
@@ -69,6 +119,30 @@ class AppTheme {
   static const multiAccent = Color.fromRGBO(51, 158, 128, 1); // (0.20,0.62,0.50)
   static const meColor = Color.fromRGBO(77, 166, 255, 1); // (0.30,0.65,1.00)
   static const oppColor = Color.fromRGBO(250, 128, 82, 1); // (0.98,0.50,0.32)
+}
+
+/// 앱 전역 ThemeData — 원본처럼 리플 없는 평평한 무채색 UI. 테스트에서 폰트를 주입할 수 있게 인자로 받는다.
+ThemeData buildAppTheme(Brightness b,
+    {String? fontFamily, List<String>? fontFamilyFallback}) {
+  final t = AppTheme(b == Brightness.dark);
+  return ThemeData(
+    brightness: b,
+    useMaterial3: true,
+    fontFamily: fontFamily,
+    fontFamilyFallback: fontFamilyFallback,
+    colorScheme: ColorScheme.fromSeed(
+        seedColor: AppTheme.soloAccent, brightness: b, surface: t.surface),
+    scaffoldBackgroundColor: t.bg,
+    canvasColor: t.surface,
+    splashFactory: NoSplash.splashFactory,
+    highlightColor: Colors.transparent,
+    splashColor: Colors.transparent,
+    dividerColor: t.border.withValues(alpha: 0.5),
+    pageTransitionsTheme: const PageTransitionsTheme(builders: {
+      TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+    }),
+  );
 }
 
 /// 숫자(주변 지뢰 수) 색 — Swift CellView.numberColor의 dark/light 값 그대로.

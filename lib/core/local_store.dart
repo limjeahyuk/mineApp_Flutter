@@ -66,8 +66,21 @@ class LocalStore {
 
   String get deviceId => _prefs.getString(_kDeviceId)!;
 
-  String get nickname => _prefs.getString(_kNickname) ?? '플레이어';
+  /// 닉네임 — 없으면 원본처럼 랜덤 이름을 발급해 저장("지뢰왕42" 등).
+  String get nickname {
+    final v = _prefs.getString(_kNickname);
+    if (v != null && v.isNotEmpty) return v;
+    const base = ['지뢰왕', '폭탄해체가', '깃발장인', '마인스위퍼', '스피드러너', '9초컷'];
+    final r = Random();
+    final name = '${base[r.nextInt(base.length)]}${10 + r.nextInt(90)}';
+    _prefs.setString(_kNickname, name);
+    return name;
+  }
   set nickname(String v) => _prefs.setString(_kNickname, v);
+
+  /// 사용자가 닉네임을 직접 정했는지(계정 연동 시 제안 이름 적용 판단).
+  bool get nicknameSetByUser => _prefs.getBool('ranking.nicknameSetByUser') ?? false;
+  set nicknameSetByUser(bool v) => _prefs.setBool('ranking.nicknameSetByUser', v);
 
   String get equippedTitleName => _prefs.getString(_kEquippedTitle) ?? '';
   set equippedTitleName(String v) => _prefs.setString(_kEquippedTitle, v);
@@ -79,7 +92,7 @@ class LocalStore {
   bool get hapticsEnabled => _prefs.getBool(_kHaptics) ?? true;
   set hapticsEnabled(bool v) => _prefs.setBool(_kHaptics, v);
 
-  bool get flagHapticsEnabled => _prefs.getBool(_kFlagHaptics) ?? true;
+  bool get flagHapticsEnabled => _prefs.getBool(_kFlagHaptics) ?? false;
   set flagHapticsEnabled(bool v) => _prefs.setBool(_kFlagHaptics, v);
 
   // 공지 — 목록을 마지막으로 본 시각(이후 새 공지가 있으면 종에 점).
@@ -184,6 +197,29 @@ class LocalStore {
     _prefs.setInt(_kCoins, coins + amount);
   }
 
+  // ── 게임에서 모으는 코인 ──
+  static const goldenMineReward = 10;
+
+  /// 솔로 클리어 보상(난이도별 코인) — Swift RankingStore.clearReward.
+  static int clearReward(Difficulty d) => switch (d) {
+        Difficulty.beginner => 1,
+        Difficulty.intermediate => 5,
+        Difficulty.expert => 10,
+        Difficulty.ultimate => 20,
+      };
+
+  int awardClearReward(Difficulty d) {
+    final r = clearReward(d);
+    addCoins(r);
+    return r;
+  }
+
+  /// 황금지뢰 1개 발견 보상(+ 누적 카운터).
+  void awardGoldenMine() {
+    addCoins(goldenMineReward);
+    addGoldenMines(1);
+  }
+
   // ── 광고 보상(하루 한도) ──
   String get _today {
     final d = DateTime.now();
@@ -221,6 +257,45 @@ class LocalStore {
     final prev = soloBest(d);
     final isBest = prev == null || timeSec < prev;
     if (isBest) _prefs.setInt(_bestKey(d), timeSec);
+    return isBest;
+  }
+
+  // ── 색상 테마(스킨) ──
+  static const themeCost = 1000;
+  static const _kColorTheme = 'settings.colorTheme';
+  static const _kOwnedThemes = 'shop.ownedThemes';
+  String get colorThemeId => _prefs.getString(_kColorTheme) ?? 'classic';
+  set colorThemeId(String v) => _prefs.setString(_kColorTheme, v);
+  Set<String> get ownedThemeIds =>
+      {'classic', ...(_prefs.getStringList(_kOwnedThemes) ?? const [])};
+  bool ownsTheme(String id) => ownedThemeIds.contains(id);
+
+  /// 테마 구매 — 코인 부족/이미 보유면 false.
+  bool purchaseTheme(String id) {
+    if (ownsTheme(id) || !spendCoins(themeCost)) return false;
+    final list = _prefs.getStringList(_kOwnedThemes) ?? <String>[];
+    list.add(id);
+    _prefs.setStringList(_kOwnedThemes, list);
+    return true;
+  }
+
+  // ── 협동("너에게 닿기를") 기록 ──
+  static const _kTouchBest = 'rank.touchBest';
+  static const _kTouchClears = 'stat.touchClears';
+  int? get touchBest {
+    final v = _prefs.getInt(_kTouchBest) ?? 0;
+    return v > 0 ? v : null;
+  }
+
+  int get touchClears => _prefs.getInt(_kTouchClears) ?? 0;
+
+  /// 협동 성공 1건 — 누적 +1, 최고 기록 갱신이면 true.
+  bool recordTouch(int timeSec) {
+    if (timeSec <= 0) return false;
+    _prefs.setInt(_kTouchClears, touchClears + 1);
+    final best = touchBest;
+    final isBest = best == null || timeSec < best;
+    if (isBest) _prefs.setInt(_kTouchBest, timeSec);
     return isBest;
   }
 
@@ -316,12 +391,23 @@ class LocalStore {
     return true;
   }
 
-  String get equippedTitleId => _prefs.getString(_kEquippedTitleId) ?? 'rookie';
+  String get equippedTitleId => _prefs.getString(_kEquippedTitleId) ?? '';
 
   /// 칭호 장착 — id와 표시 이름을 함께 저장(랭킹 제출/표시에 이름 사용).
   void equipTitle(String id, String name) {
     _prefs.setString(_kEquippedTitleId, id);
     equippedTitleName = name;
+  }
+
+  /// 칭호 떼기(미착용).
+  void unequipTitle() => equipTitle('', '');
+
+  /// 코인으로 칭호 구매 → 해금 + 바로 착용. 코인 부족/이미 보유면 false.
+  bool purchaseTitle(String id, String name, int cost) {
+    if (isTitleOwned(id) || !spendCoins(cost)) return false;
+    unlockTitle(id);
+    equipTitle(id, name);
+    return true;
   }
 
   // ── 클라우드 백업/복원 ──
@@ -333,7 +419,8 @@ class LocalStore {
         _kCoins, _kOwnedFlags, _kOwnedRadars, _kOwnedMegaphones,
         _kRaceWins, _kRaceLosses, _kRaceDraws,
         _kCurStreak, _kBestStreak, _kGachaDraws, _kJackpots, _kGoldenMines,
-        _kNoItemExpert, _kNoItemUltimate,
+        _kNoItemExpert, _kNoItemUltimate, _kTouchBest, _kTouchClears,
+        _kOwnedThemes,
         for (final d in Difficulty.values) ...[_bestKey(d), _countKey(d)],
       ];
 

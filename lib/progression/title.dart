@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../core/board.dart';
@@ -7,10 +8,10 @@ import '../core/local_store.dart';
 /// 보유/장착/통계는 LocalStore가, 카탈로그(이 파일)는 순수 데이터다.
 
 enum TitleRarity {
-  common('일반', Color(0xFF9EA6B3), Icons.workspace_premium_outlined),
-  rare('레어', Color(0xFF4D9EF2), Icons.verified),
-  epic('에픽', Color(0xFFAB75F5), Icons.auto_awesome),
-  legendary('전설', Color(0xFFFAC74D), Icons.emoji_events);
+  common('일반', Color.fromRGBO(158, 166, 179, 1), CupertinoIcons.rosette),
+  rare('레어', Color.fromRGBO(77, 158, 242, 1), CupertinoIcons.checkmark_seal_fill),
+  epic('에픽', Color.fromRGBO(171, 117, 245, 1), CupertinoIcons.sparkles),
+  legendary('전설', Color.fromRGBO(250, 199, 77, 1), Icons.workspace_premium_rounded);
 
   const TitleRarity(this.label, this.color, this.icon);
   final String label;
@@ -73,6 +74,24 @@ class JackpotGoal extends Goal {
 
 class CoinsAtLeastGoal extends Goal {
   const CoinsAtLeastGoal(this.n);
+  final int n;
+}
+
+/// 협동("너에게 닿기를") 누적 성공 횟수.
+class TouchClearsGoal extends Goal {
+  const TouchClearsGoal(this.n);
+  final int n;
+}
+
+/// 협동 최고 기록이 sec초 이내.
+class TouchUnderGoal extends Goal {
+  const TouchUnderGoal(this.sec);
+  final int sec;
+}
+
+/// 색상 테마 보유 수(클래식 포함).
+class ThemesOwnedGoal extends Goal {
+  const ThemesOwnedGoal(this.n);
   final int n;
 }
 
@@ -154,18 +173,18 @@ class Title {
         TitleSource.achievement(WinStreakGoal(5)), '대전 5연승'),
     Title('duelist', '승부사', TitleRarity.epic,
         TitleSource.achievement(RaceWinsGoal(50)), '대전에서 50승'),
-    // 협동형(미이식 — 잠김)
+    // 협동형
     Title('soulmate', '환상의 짝꿍', TitleRarity.rare,
-        TitleSource.achievement(UnportedGoal(10)), "'너에게 닿기를' 10회 성공"),
+        TitleSource.achievement(TouchClearsGoal(10)), "'너에게 닿기를' 10회 성공"),
     Title('telepathy', '텔레파시', TitleRarity.epic,
-        TitleSource.achievement(UnportedGoal(30)), "'너에게 닿기를' 30초 이내 성공"),
+        TitleSource.achievement(TouchUnderGoal(30)), "'너에게 닿기를' 30초 이내 성공"),
     // 경제/뽑기형
     Title('golden_hand', '황금손', TitleRarity.rare,
         TitleSource.achievement(GoldenMinesGoal(100)), '황금지뢰 100개 발견'),
     Title('gacha_addict', '뽑기 중독', TitleRarity.rare,
         TitleSource.achievement(DrawsGoal(100)), '뽑기 100회'),
     Title('collector', '수집가', TitleRarity.rare,
-        TitleSource.achievement(UnportedGoal(3)), '색상 테마 3개 보유'),
+        TitleSource.achievement(ThemesOwnedGoal(3)), '색상 테마 3개 보유'),
     // 히든
     Title('jackpot', '잭팟 주인공', TitleRarity.legendary,
         TitleSource.achievement(JackpotGoal(1)), 'x3 뽑기에서 잭팟 터뜨리기',
@@ -185,6 +204,13 @@ class Title {
   static Title? byId(String id) {
     for (final t in all) {
       if (t.id == id) return t;
+    }
+    return null;
+  }
+
+  static Title? byName(String name) {
+    for (final t in all) {
+      if (t.name == name) return t;
     }
     return null;
   }
@@ -235,6 +261,16 @@ class Title {
     case CoinsAtLeastGoal(:final n):
       final c = s.coins;
       return (current: c.clamp(0, n), target: n, done: c >= n);
+    case TouchClearsGoal(:final n):
+      final c = s.touchClears;
+      return (current: c.clamp(0, n), target: n, done: c >= n);
+    case TouchUnderGoal(:final sec):
+      final best = s.touchBest;
+      final done = best != null && best <= sec;
+      return (current: done ? sec : 0, target: sec, done: done);
+    case ThemesOwnedGoal(:final n):
+      final c = s.ownedThemeIds.length;
+      return (current: c.clamp(0, n), target: n, done: c >= n);
     case UnportedGoal(:final n):
       return (current: 0, target: n, done: false);
   }
@@ -253,4 +289,43 @@ List<Title> refreshAchievements() {
     }
   }
   return newly;
+}
+
+/// 칭호 배지 — Swift TitleBadgeView 이식(희귀도 색 캡슐 + 아이콘).
+class TitleBadge extends StatelessWidget {
+  const TitleBadge({super.key, required this.name, this.size = 10});
+  final String name;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    if (name.isEmpty) return const SizedBox.shrink();
+    final rarity = Title.byName(name)?.rarity ?? TitleRarity.common;
+    final c = rarity.color;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: size * 0.8, vertical: size * 0.3),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(100),
+        gradient: LinearGradient(
+          colors: [c.withValues(alpha: 0.24), c.withValues(alpha: 0.10)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        border: Border.all(color: c.withValues(alpha: 0.45), width: 0.8),
+        boxShadow: rarity == TitleRarity.legendary
+            ? [BoxShadow(color: c.withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 1))]
+            : null,
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(rarity.icon, size: size, color: c),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: size, fontWeight: FontWeight.w800, color: c)),
+        ),
+      ]),
+    );
+  }
 }

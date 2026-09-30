@@ -48,7 +48,7 @@ class _NoticePopup extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
                 child: Row(
                   children: [
-                    const Icon(Icons.campaign, size: 18, color: _accent),
+                    const Icon(Icons.campaign_rounded, size: 18, color: _accent),
                     const SizedBox(width: 8),
                     Text('공지',
                         style: TextStyle(

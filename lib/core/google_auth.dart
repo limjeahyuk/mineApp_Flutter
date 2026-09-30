@@ -15,10 +15,15 @@ class GoogleAuth {
 
   static bool _initialized = false;
 
-  static bool get isLinked =>
-      FirebaseAuth.instance.currentUser?.providerData
-          .any((p) => p.providerId == 'google.com') ??
-      false;
+  static bool get isLinked {
+    try {
+      return FirebaseAuth.instance.currentUser?.providerData
+              .any((p) => p.providerId == 'google.com') ??
+          false;
+    } catch (_) {
+      return false; // Firebase 미초기화(테스트 등)
+    }
+  }
 
   static Future<void> _ensureInit() async {
     if (_initialized) return;

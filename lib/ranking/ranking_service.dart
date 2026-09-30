@@ -76,4 +76,71 @@ class RankingService {
     all.sort((a, b) => a.timeSec.compareTo(b.timeSec));
     return all.take(limit).toList();
   }
+
+  /// 내 최고 기록의 전체 등수(나보다 빠른 다른 기기 수 + 1). 기록 없음/오프라인이면 null.
+  Future<int?> onlineRank(Difficulty d, int myBest, String deviceId) async {
+    try {
+      final list = await top(d, limit: 300);
+      if (list.isEmpty) return null;
+      final faster =
+          list.where((e) => e.deviceId != deviceId && e.timeSec < myBest).length;
+      return faster + 1;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static const _touchCollection = 'touchScores';
+
+  /// 협동 개인 최고 기록 upsert(문서 ID = deviceId) — Swift submitTouchBest.
+  Future<void> submitTouchBest(
+      {required String name,
+      required int timeSec,
+      required String deviceId,
+      String title = ''}) async {
+    try {
+      await AuthService.ensureSignedIn();
+      await _db.collection(_touchCollection).doc(deviceId).set({
+        'name': name,
+        'title': title,
+        'timeSec': timeSec,
+        'deviceId': deviceId,
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+  }
+
+  /// 협동 상위 기록(빠른 순).
+  Future<List<ScoreEntry>> topTouch({int limit = 50}) async {
+    await AuthService.ensureSignedIn();
+    final snap = await _db.collection(_touchCollection).limit(300).get();
+    final all = <ScoreEntry>[];
+    for (final doc in snap.docs) {
+      final m = doc.data();
+      final name = m['name'];
+      final time = m['timeSec'];
+      if (name is! String || time is! num) continue;
+      all.add(ScoreEntry(
+        name: name,
+        difficulty: 'touch',
+        timeSec: time.toInt(),
+        deviceId: (m['deviceId'] as String?) ?? '',
+        title: (m['title'] as String?) ?? '',
+      ));
+    }
+    all.sort((a, b) => a.timeSec.compareTo(b.timeSec));
+    return all.take(limit).toList();
+  }
+
+  /// 협동 전체 등수 — 기록 없음/오프라인이면 null.
+  Future<int?> touchOnlineRank(int? myBest, String deviceId) async {
+    if (myBest == null) return null;
+    try {
+      final list = await topTouch(limit: 300);
+      if (list.isEmpty) return null;
+      return list.where((e) => e.deviceId != deviceId && e.timeSec < myBest).length + 1;
+    } catch (_) {
+      return null;
+    }
+  }
 }

@@ -38,7 +38,7 @@ class MailGift {
   /// "🪙 500 · 🚩 3" 요약(0인 항목 생략).
   String get rewardSummary {
     final parts = <String>[];
-    if (coins > 0) parts.add('🪙 $coins');
+    if (coins > 0) parts.add('🪙 ${_fmt(coins)}');
     if (flags > 0) parts.add('🚩 $flags');
     if (megaphones > 0) parts.add('📢 $megaphones');
     if (radars > 0) parts.add('📡 $radars');
@@ -93,3 +93,6 @@ class MailService {
     return items;
   }
 }
+
+String _fmt(int n) => n.toString().replaceAllMapped(
+    RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');

@@ -27,7 +27,7 @@ void main() {
     // 새 기기(빈 상태)로 복원.
     SharedPreferences.setMockInitialValues({});
     final fresh = await LocalStore.init();
-    expect(fresh.nickname, '플레이어'); // 복원 전 기본값
+    expect(fresh.nickname, isNot('테스터')); // 복원 전엔 다른(랜덤) 이름
     fresh.restoreBackup(snapshot);
 
     expect(fresh.nickname, '테스터');

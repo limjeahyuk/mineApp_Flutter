@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/board.dart';
 import '../core/local_store.dart';
 import '../core/theme.dart';
 import '../core/types.dart';
@@ -218,7 +219,9 @@ class _VersusScreenState extends State<VersusScreen> {
                       onRadar: () => setState(() {
                         g.useRadar();
                       }),
-                      onToggleProbe: () => setState(() => probing = !probing),
+                      usesEdgeDrawer: g.difficulty == Difficulty.expert ||
+                          g.difficulty == Difficulty.ultimate,
+                      onProbingChanged: (v) => setState(() => probing = v),
                     ),
                   ),
               ],

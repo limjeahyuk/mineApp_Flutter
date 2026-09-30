@@ -1,4 +1,7 @@
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
+
+import '../core/ui.dart';
 
 import '../core/haptics.dart';
 import '../core/theme.dart';
@@ -38,12 +41,12 @@ class _GuideScreenState extends State<GuideScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    return Scaffold(
-      backgroundColor: t.surface,
-      body: SafeArea(
+    return SheetScaffold(
+      title: '가이드',
+      child: ColoredBox(
+        color: t.surface,
         child: Column(
           children: [
-            _header(t),
             _tabBar(t),
             Expanded(
               child: PageView(
@@ -61,33 +64,6 @@ class _GuideScreenState extends State<GuideScreen> {
       ),
     );
   }
-
-  Widget _header(AppTheme t) => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 16, 0),
-        child: Row(
-          children: [
-            Material(
-              color: t.fill,
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: () => Navigator.of(context).pop(),
-                child: SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: Icon(Icons.close, color: t.textSecondary, size: 20)),
-              ),
-            ),
-            Expanded(
-              child: Text('가이드',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: t.text, fontSize: 20, fontWeight: FontWeight.w800)),
-            ),
-            const SizedBox(width: 40),
-          ],
-        ),
-      );
 
   Widget _tabBar(AppTheme t) => Padding(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
@@ -278,7 +254,7 @@ class _GuideScreenState extends State<GuideScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.lightbulb, size: 14, color: _gold),
+                  const Icon(SF.lightbulbFill, size: 14, color: _gold),
                   const SizedBox(width: 7),
                   Expanded(
                     child: Text(l.conclusion,
@@ -363,7 +339,7 @@ class _GuideScreenState extends State<GuideScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.emoji_events, size: 13, color: game.accent),
+                  Icon(SF.trophyFill, size: 13, color: game.accent),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(game.goal,
@@ -538,7 +514,7 @@ class _TutoBoard extends StatelessWidget {
       case _Kind.mine:
         return Text('💣', style: TextStyle(fontSize: _cell * 0.46));
       case _Kind.safe:
-        return Icon(Icons.check, size: _cell * 0.4, color: _safeGreen);
+        return Icon(SF.checkmark, size: _cell * 0.4, color: _safeGreen);
       case _Kind.empty:
       case _Kind.hidden:
       case _Kind.wall:
@@ -600,24 +576,24 @@ const _controls = <_GuideItem>[
       '지뢰라고 생각되는 칸을 길게 누르면 깃발이 꽂혀요. 실수로 열지 않게 표시해 두는 용도이고, 다시 길게 누르면 빠져요.'),
   _GuideItem(_GuideIcon.emoji('🔢'), '숫자의 뜻',
       "열린 숫자는 그 칸과 맞닿은 8칸 안에 숨은 지뢰의 개수예요. '3'이면 둘레에 지뢰가 정확히 3개라는 뜻이에요."),
-  _GuideItem(_GuideIcon.symbol(Icons.touch_app, _itemPurple), '숫자 탭 = 주변 한꺼번에 열기',
+  _GuideItem(_GuideIcon.symbol(Icons.touch_app_rounded, _itemPurple), '숫자 탭 = 주변 한꺼번에 열기',
       '숫자 둘레에 그 숫자만큼 깃발을 다 꽂았다면, 그 숫자를 한 번 더 탭해 남은 칸을 한꺼번에 열 수 있어요. 빠르게 푸는 핵심이에요. 단, 깃발이 틀렸으면 지뢰가 열려 지니 깃발이 확실할 때만 쓰세요.'),
 ];
 
 const _buttons = <_GuideItem>[
   _GuideItem(_GuideIcon.emoji('🙂'), '얼굴 버튼 — 다시 시작',
       '가운데 표정을 누르면 같은 판을 처음부터 다시 시작해요. 진행 중엔 🙂, 이기면 😎, 지면 😵 로 표정이 바뀌어요.'),
-  _GuideItem(_GuideIcon.symbol(Icons.flag, _flagRed), '깃발 모드 버튼',
+  _GuideItem(_GuideIcon.symbol(SF.flagFill, _flagRed), '깃발 모드 버튼',
       '켜면 탭만으로 깃발을 꽂아요(탭=깃발, 길게=칸 열기로 반대가 돼요). 깃발을 많이 꽂을 때 편해요.'),
-  _GuideItem(_GuideIcon.symbol(Icons.zoom_in, _zoomBlue), '확대 버튼',
+  _GuideItem(_GuideIcon.symbol(SF.zoomIn, _zoomBlue), '확대 버튼',
       '보드를 크게 키워서 보고 드래그로 움직일 수 있어요. 칸이 작은 고급·최고급에서 특히 유용해요.'),
   _GuideItem(_GuideIcon.emoji('💣'), '왼쪽 숫자판 — 남은 지뢰',
       '전체 지뢰 수에서 꽂은 깃발 수를 뺀 값이에요. 깃발을 꽂을수록 줄어들어, 0이 되면 깃발을 다 꽂은 거예요.'),
   _GuideItem(_GuideIcon.emoji('⏱️'), '오른쪽 숫자판 — 시간',
       '시작부터 흐른 시간(초)이에요. 최고 기록과 랭킹은 이 시간으로 매겨져요.'),
-  _GuideItem(_GuideIcon.symbol(Icons.auto_fix_high, _itemPurple), '자동깃발 아이템',
+  _GuideItem(_GuideIcon.symbol(CupertinoIcons.wand_rays, _itemPurple), '자동깃발 아이템',
       '확실한 지뢰 칸에 깃발을 자동으로 꽂아주는 도우미예요. 아이템을 켜고 숫자칸을 고르면 그 둘레 지뢰에 깃발이 꽂혀요. (초급·중급은 우측 하단, 고급·최고급은 우측 가장자리 손잡이)'),
-  _GuideItem(_GuideIcon.symbol(Icons.more_horiz, Color(0xFF999999)), '⋯ 메뉴 — 판 코드',
+  _GuideItem(_GuideIcon.symbol(SF.ellipsis, Color(0xFF999999)), '⋯ 메뉴 — 판 코드',
       '지금 판의 코드를 복사·공유할 수 있어요. 친구가 같은 코드를 입력하면 똑같은 판으로 대결할 수 있어요.'),
 ];
 
@@ -708,7 +684,7 @@ const _games = <_MultiGame>[
         '한 보드를 실시간으로 함께 봐요. 보드가 끝났을 때 깃발로 지뢰를 더 많이 맞힌 사람이 승리예요(맞힌 깃발 +1, 틀린 깃발 −1). 밟아 터진 지뢰는 누구의 점수도 아니에요.'),
     _GuideItem(_GuideIcon.emoji('🤝'), '합동',
         '한 보드를 둘이 함께 풀어 안전한 칸을 모두 열면 같이 승리해요. 단, 둘 중 누구든 지뢰를 밟으면 함께 패배하니 호흡이 중요해요.'),
-    _GuideItem(_GuideIcon.symbol(Icons.tune, _mineBlue), '난이도·상대 고르기',
+    _GuideItem(_GuideIcon.symbol(CupertinoIcons.slider_horizontal_3, _mineBlue), '난이도·상대 고르기',
         '초급부터 최고급까지 난이도를 고르고, 실시간 매칭·봇·친구 방 중에서 상대를 정할 수 있어요.'),
   ]),
   _MultiGame('💎', '보물찾기', '가운데 보물까지 먼저!', _treasureGold,
@@ -721,7 +697,7 @@ const _games = <_MultiGame>[
         '밟아도 게임오버는 아니에요. 대신 주변 5×5 칸이 도로 닫히고 잠깐 멈춰요(그 안 지뢰도 다시 섞여요). 그만큼 시간을 잃죠.'),
     _GuideItem(_GuideIcon.emoji('🌶️'), '중앙일수록 빽빽',
         '가운데로 갈수록 지뢰가 촘촘해져요. 보물 코앞이 가장 어려운 구간이에요.'),
-    _GuideItem(_GuideIcon.symbol(Icons.person, _treasureGold), '혼자 연습',
+    _GuideItem(_GuideIcon.symbol(SF.personFill, _treasureGold), '혼자 연습',
         '상대 없이 같은 규칙으로 길 뚫기를 연습할 수 있어요.'),
   ]),
   _MultiGame('🤝', '너에게 닿기를', '길 뚫어 서로 만나기 · 협동', _touchGreen,
@@ -734,7 +710,7 @@ const _games = <_MultiGame>[
         '1.5초 동안 멈추고, 게다가 파트너가 꽂아둔 깃발 1개가 무작위로 빠져요. 협동이라 내 실수가 파트너에게도 영향을 줘요.'),
     _GuideItem(_GuideIcon.emoji('📣'), '확성기 5개',
         "보드에 숨은 확성기 칸을 열면 파트너 화면에 '여기서 울렸어요' 방향 화살표가 잠깐 떠요. 만날 방향을 잡는 데 도움이 돼요."),
-    _GuideItem(_GuideIcon.symbol(Icons.flag, _touchGreen), '깃발은 서로의 신호',
+    _GuideItem(_GuideIcon.symbol(SF.flagFill, _touchGreen), '깃발은 서로의 신호',
         "꽂은 깃발은 파트너 안개에도 보여서 '여기 지뢰 있어'라고 알려주는 신호가 돼요."),
   ]),
 ];

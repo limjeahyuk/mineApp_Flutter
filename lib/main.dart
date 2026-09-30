@@ -21,21 +21,15 @@ class MineApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeModeNotifier,
-      builder: (_, mode, _) => MaterialApp(
+    return ListenableBuilder(
+      listenable: Listenable.merge([themeModeNotifier, colorThemeNotifier]),
+      builder: (_, _) => MaterialApp(
+        key: ValueKey(colorThemeNotifier.value),
         title: '지뢰찾기 아레나',
         debugShowCheckedModeBanner: false,
-        themeMode: mode,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-          useMaterial3: true,
-        ),
-        darkTheme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.indigo, brightness: Brightness.dark),
-          useMaterial3: true,
-        ),
+        themeMode: themeModeNotifier.value,
+        theme: buildAppTheme(Brightness.light),
+        darkTheme: buildAppTheme(Brightness.dark),
         home: const HomeScreen(),
       ),
     );
