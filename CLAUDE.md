@@ -34,11 +34,18 @@
 - 모드: 솔로 `game_screen`, 대전(스피드/점수) `multiplayer/`, 협동 `modes/touch_model`, 보물찾기 `modes/treasure_model`.
 - 명령: `flutter run -d <id>`, `flutter test`.
 
+## UI 원칙 — 원본 SwiftUI와 픽셀 단위로 맞춤
+- 공용 UI 키트 `lib/core/ui.dart`: `SF.*`(SF Symbols 모양 = CupertinoIcons, 없는 것만 둥근 Material), `sf(size, weight:)`(SwiftUI `.font(.system)` 대응), `Tap`(리플 없는 `.buttonStyle(.plain)`), `GoldenMineIcon`(코인 = 황금지뢰 벡터), `showAppSheet`+`SheetScaffold`(원본 `.sheet{NavigationStack{…닫기}}`), `Segmented`, `showCupertinoConfirm/Alert/TextAlert`, `ToastMixin`.
+- **Material 아이콘·InkWell·AppBar 쓰지 말 것**(원본과 달라 보임). 수치(패딩·크기·라운드·폰트)는 Swift 파일 값을 그대로 옮긴다.
+- 홈에서 여는 화면(상점·랭킹·업적·선물함·공지·가이드·내 정보·설정·솔로 난이도)은 시트, 멀티 메뉴는 풀스크린 — 원본과 동일.
+- 색상 테마(스킨) 이식: `ColorThemeDef`(theme.dart) + `colorThemeNotifier`. 표면색만 틴트(`AppTheme._g`), 글자색은 무채색(`_n`).
+- 스크린샷 검증: 로컬 전용 `test_shots/`(git 제외, `.git/info/exclude`)에서 한글·이모지 폰트를 로드해 PNG로 렌더 후 원본 코드와 대조.
+
 ## 아이템(레이더·자동깃발)
 - 로직은 `game_model.dart`(`useRadar`/`useAutoFlag`, 티켓=min(보유, 상한)). 상한: 레이더 `Difficulty.radarCap`(초1·중1·고2·최고3), 자동깃발 솔로 `soloAutoFlagCap`(초3·중3·고5·최고7)·타모드 3.
 - 인벤토리 영속화: `LocalStore.ownedFlags/ownedRadars`(시작지급 flag 10·radar 5, `consumeFlag/Radar`·`addFlags/Radars`).
 - 배선: 화면(game_screen·versus_screen) initState에서 `game.autoFlagSupplier/onConsumeAutoFlag/radarSupplier/onConsumeRadar`를 LocalStore에 연결(**startSolo/startSeeded 전에** — 거기서 티켓 계산).
-- UI: `item_dock.dart`(우하단 플로팅). 자동깃발은 탭→probing(보라 강조)→숫자칸 탭으로 발동(BoardWidget/CellView의 `probing`/`onProbe`).
+- UI: `item_dock.dart` = Swift AutoFlagDock. **초급·중급은 우하단 플로팅, 고급·최고급·보물찾기·협동은 오른쪽 엣지 서랍(손잡이 `<` 탭해서 열기, 위아래 드래그)**. 자동깃발은 탭→probing(보라 강조)→다음 탭을 onProbe로(실패해도 발동 해제). 솔로는 레이더 0개면 버튼 숨김(`hideRadarWhenEmpty`), 손잡이에 남은 수 표시(`soloHandle`).
 
 ## 상점(코인·가챠) — 이식됨
 - `shop/shop_screen.dart`(뽑기/충전 2탭), `shop/shop_logic.dart`(draw/drawTriple, 균등 1/3, 잭팟=×3 전부 일치 시 전 아이템 3개씩).
@@ -49,20 +56,23 @@
 - `ranking/ranking_screen.dart`(솔로/대전·협동 2탭), `ranking/ranking_service.dart`(Firestore `scores`, named DB `mineappdatabase`, docId `deviceId_난이도`, difficulty=`Difficulty.label`, timeSec 클라 정렬).
 - 로컬 기록: `LocalStore.soloBest/soloClearCount/recordSolo`(난이도별 최고·클리어수), 대전 전적 `raceWins/Losses/Draws/recordRace*`.
 - 배선: 솔로 승리 → `game.onSoloWin`에서 `recordSolo` + 신기록이면 `RankingService.submitBest`(game_screen). 대전 종료 → versus_screen 리스너가 `recordRace*` 1회. 홈 랭킹 버튼 → RankingScreen.
-- **기존 Swift 앱과 같은 `scores` 컬렉션 → 크로스플랫폼 랭킹 공유**(실측 확인). 협동 랭킹(`touchScores`)은 모드 미이식이라 "준비 중".
+- **기존 Swift 앱과 같은 `scores` 컬렉션 → 크로스플랫폼 랭킹 공유**(실측 확인). 협동 랭킹 `touchScores`(docId=deviceId)도 이식 — 협동 성공 시 `recordTouch` + 신기록이면 제출, 랭킹 대전·협동 탭에 최고 기록·전체 등수.
+- 솔로 클리어 코인 보상(초급1·중급5·고급10·최고급20)·황금지뢰 +10(`LocalStore.awardClearReward/awardGoldenMine`), 클리어 팝업의 전체 등수(`RankingService.onlineRank`).
 
 ## 우편함 · 업적/칭호 — 이식됨
 - 우편함: `mail/mail.dart`(MailGift + Firestore `mailGifts` 읽기, named DB) + `mail/mail_screen.dart`. "받기" → `LocalStore.grantMailReward` + `markMailClaimed`(1회). 홈 선물 아이콘 → MailScreen.
 - 업적/칭호: `progression/title.dart`(칭호 23종 카탈로그 + Goal 평가 + `refreshAchievements`) + `progression/achievements_screen.dart`(도전과제 진행/칭호 장착·구매 2탭). 홈 업적 → AchievementsScreen.
 - 통계(LocalStore): `gachaDraws/gachaJackpots`(ShopLogic 배선), `goldenMinesFound`(game.onGoldenMineFound 배선), `bestWinStreak`(recordRaceWin/Loss), `noItemExpert/UltimateClears`(onSoloWin noItem). 칭호 보유 `ownedTitleIds`+장착 `equippedTitleId`.
-- 미이식 목표(항상 잠금): 협동(touchClears/touchUnder)·테마(themesOwned) — `UnportedGoal`. 일일 도전과제(DailyChallenge)도 미이식.
+- 협동(touchClears/touchUnder)·테마(themesOwned) 목표도 이식(`LocalStore.touchBest/touchClears/ownedThemeIds`).
 
 ## 협동·보물찾기 모드 — 이식됨
 - 모델은 기존 `modes/touch_model.dart`(협동 안개 공유보드)·`modes/treasure_model.dart`(중앙 보물 경쟁). 컨트롤러/화면 신규:
   - 협동: `modes/coop_controller.dart` + `coop_screen.dart`(`FirebaseMatchService(kind:'touch')`, 안개 렌더 = `isVisible` 밖은 어둡게, 만나면 공동 승리). **보드 80×80(원본과 동일, 크로스플레이 정합)** — 화면보다 크므로 `InteractiveViewer(constrained:false)` 팬/줌 + 판 시작 시 내 시작점 자동 센터링(고정 셀 28px). `TouchModel` 타이머는 매초 rebuild 방지 위해 elapsed만 증가(알림 X). 2 시뮬 실측 검증됨.
   - 보물: `modes/treasure_controller.dart` + `treasure_screen.dart`(`kind:'treasure'`, 중앙 💎 먼저 열면 승리, 나·상대 진행바).
 - 대전 메뉴 게임유형 탭(`GameType.mine/treasure/coop`)이 실제 라우팅 — 랜덤/방만들기/코드참가가 선택 유형의 화면을 연다.
-- ponytail 미이식: 협동 지뢰 페널티 상대 동기화·확성기 브로드캐스트·stun 전파(핵심 reveal/flag/보드 동기화만), 보물 깃발 동기화(TreasureModel엔 onPushFlag 없음).
+- 협동: 확성기 핑(방향 화살표 배너)·지뢰 페널티(파트너 깃발 1개 드롭)·기절 배너·만난 지점 복기 마커까지 이식(`coop_controller.dart`, `touch_board.dart`).
+- 보물찾기 멀티 보드는 **51×51**(원본 동일 — 예전 15×15는 버그였음). 게스트는 180° 뒤집어 그림, 카운트다운 없이 바로 시작(원본 동일). 큰 보드는 CustomPaint 한 장(`treasure_board.dart`/`touch_board.dart`)으로 그려 성능 확보.
+- 대전: 자리비움 경고(30초)/항복(120초)(`RaceController`), 방 코드 복사·공유(share_plus).
 
 ## 환경설정 · 내 정보 — 이식됨
 - 환경설정: `settings/settings_screen.dart` — 화면 테마(시스템/라이트/다크) + 게임 햅틱 2종 on/off. 테마는 전역 `themeModeNotifier`(theme.dart)+`setThemeMode`로 즉시 반영, `main.dart`의 `MaterialApp.themeMode`가 구독. 저장은 `LocalStore.themeMode`. 햅틱은 `Haptics.isEnabled/isFlagEnabled`(LocalStore 백업)로 게이트. 색상 테마(스킨) 갤러리는 미이식(클래식 무채색만).
@@ -101,15 +111,26 @@
 - 이벤트 배선(오늘 뽑힌 kind만 누적): 솔로 클리어→clears, 대전 승→raceWins, 황금지뢰→golden, 뽑기→draws(단일1·×3은 3), 협동 성공→touch. game_screen/versus_screen/shop_logic/coop_controller에서 `Daily.bump`.
 - 테스트: `test/daily_test.dart`(forDay 결정성·회전, bump 가드, claim 1회).
 
-## 봇과 대전 — 이식됨(지뢰찾기 전용)
+## 봇과 대전 — 이식됨(지뢰찾기: 스피드·지뢰 대결·합동)
 - `multiplayer/bot_match_service.dart`(MatchService 구현). Swift BotMatchService 이식.
   - 스피드: 시간 기반 상대 시뮬(난이도별 목표 시각 speedFinishSeconds에 완료, 초급≈35초·최고급≈14분).
   - 지뢰 대결: 봇이 같은 시드 보드의 미러(GameModel)를 직접 플레이 — 열린 숫자만으로 추론(deductions), 확정 지뢰는 flagBias 확률로 차지, 막히면 frontier 안전칸 확장. onRemoteBoard로 사람 화면 공유 보드에 반영, 사람 동작은 pushReveal/pushFlag로 봇 미러에 반영. turnInterval+paceMultiplier(후반 감속)로 난이도 조절.
 - 배선: `RaceMode.bot(difficulty, rule)`(multiplayer.dart) → versus_screen이 mode.kind==bot이면 BotMatchService 사용, 아니면 FirebaseMatchService. race_controller: bot은 find로 매칭·rematch로 같은 봇 새 판. 대전 메뉴 '봇과 대전' 카드(지뢰찾기만; 보물/협동은 "준비 중").
-- 미이식: 협동/보물 봇, 봇 칭호(opponentTitle).
+  - 합동: 봇 파트너가 같은 보드를 함께 — 확정 안전칸만 열고 확정 지뢰엔 깃발(추측 없음, 막히면 사람을 기다림). `test/bot_test.dart`.
+- 봇 칭호(opponentTitle) 랜덤 부여. 원본에도 보물찾기/너에게 닿기를 봇은 없다(보물찾기는 '혼자 연습' = `modes/treasure_solo_screen.dart`).
+
+## 이어하기 · 딥링크 · 칭호 배너 — 이식됨
+- 솔로 이어하기: 백그라운드 전환 시 `GameModel.makeResumeSnapshot` → `LocalStore.saveSoloResume`, 다음 진입 때 "이어서 할까요?"(홈으로 나가거나 판이 끝나면 폐기). `test/resume_test.dart`.
+- 초대 딥링크 `mineapp://…?g=mine|treasure|touch&c=CODE`(app_links, `core/deep_link.dart`) — iOS URL scheme·Android intent-filter.
+- 새 칭호 배너: 통계 변동 지점에서 `announceAchievements()` → main의 오버레이가 2.8초 표시.
+
+## 출시 설정
+- `Info.plist`의 `ITSAppUsesNonExemptEncryption=false`(표준 HTTPS만 사용 → TestFlight 수출 규정 질문 생략).
+- 스플래시 배경 = 아이콘 보라 배경 `#5C5FC5`(iOS LaunchScreen, Android launch_background + values-v31 SplashScreen API).
 
 ## 원본에서 아직 미이식(로드맵)
 
-협동·보물 봇, 실제 AdMob·IAP 코인팩, AFK 자동몰수, bestTime/재개 스냅샷의 shared_preferences 연동, 색상 테마(스킨), Game Center, 협동 랭킹(touchScores).
+실제 AdMob 보상형 광고(현재 시뮬 — Android용 AdMob 앱 ID 필요), IAP 코인팩, Game Center(iOS 전용), bestTime(판 코드별 최고)의 영구 저장.
+이 컨테이너에선 Android SDK 다운로드(dl.google.com)가 막혀 있어 APK 빌드는 로컬에서 확인해야 한다.
 
 코드는 됐고 **콘솔/수동만 남은 것**: Firebase 규칙 실제 게시(위 dry-run 통과), 릴리스 키스토어 생성, Firebase Auth provider 활성화 + Apple capability/프로비저닝 + Android SHA-1 등록.
