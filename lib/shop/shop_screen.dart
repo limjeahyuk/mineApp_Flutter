@@ -8,6 +8,7 @@ import '../core/theme.dart';
 import '../core/types.dart';
 import '../core/ui.dart';
 import 'shop_logic.dart';
+import '../progression/title.dart';
 
 /// 코인 상점 — Swift ShopView 이식. 잔액 카드 + (뽑기 | 충전) 세그먼트.
 /// 광고는 시뮬레이션(RewardedAdView) — 실제 AdMob 미이식.
@@ -485,6 +486,7 @@ class _ShopScreenState extends State<ShopScreen> with ToastMixin {
       if (mounted) setState(() => pop = true);
     });
     showToast('${item.emoji} ${item.itemName} 획득!');
+    announceAchievements();
   }
 
   void _performTriple() {
@@ -523,6 +525,7 @@ class _ShopScreenState extends State<ShopScreen> with ToastMixin {
         tm.cancel();
         setState(() => spinning = false);
         Haptics.success();
+        announceAchievements();
         if (result.jackpot) {
           setState(() => jackpotGlow = true);
           showToast('🎉 잭팟! 모든 아이템 3개씩 획득!');

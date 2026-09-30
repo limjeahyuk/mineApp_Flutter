@@ -262,6 +262,21 @@ class LocalStore {
     return isBest;
   }
 
+  // ── 솔로 이어하기 스냅샷 ──
+  static const _kResume = 'solo.resume.snapshot';
+  void saveSoloResume(Map<String, Object> snap) => _prefs.setString(_kResume, jsonEncode(snap));
+  Map<String, dynamic>? loadSoloResume() {
+    final raw = _prefs.getString(_kResume);
+    if (raw == null) return null;
+    try {
+      return jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void clearSoloResume() => _prefs.remove(_kResume);
+
   // ── 색상 테마(스킨) ──
   static const themeCost = 1000;
   static const _kColorTheme = 'settings.colorTheme';

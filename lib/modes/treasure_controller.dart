@@ -9,6 +9,7 @@ import '../core/types.dart';
 import '../multiplayer/multiplayer.dart';
 import '../progression/daily.dart';
 import 'treasure_model.dart';
+import '../progression/title.dart';
 
 enum TreasureFlow { searching, racing, finished }
 
@@ -31,6 +32,7 @@ class TreasureController extends ChangeNotifier {
     model.onGoldenMineFound = () {
       inv.awardGoldenMine();
       Daily.bump(DailyKind.golden);
+      announceAchievements();
       Haptics.success();
     };
   }

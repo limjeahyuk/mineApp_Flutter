@@ -699,6 +699,78 @@ class GameModel extends ChangeNotifier {
     grid[r][c].flagOwner = null;
   }
 
+  // MARK: - 이어하기 스냅샷(앱 종료 후 복원) — Swift makeResumeSnapshot/restore 이식
+
+  /// 진행 중인 솔로 판을 저장용 JSON 맵으로. 솔로·스피드·진행 중일 때만.
+  Map<String, Object>? makeResumeSnapshot() {
+    if (!_isSolo || rule != RaceRule.speed || shared || state != GameState.playing) return null;
+    final sd = seed;
+    if (sd == null) return null;
+    return {
+      'difficulty': difficulty.label,
+      'seed': sd,
+      'elapsed': elapsed,
+      'didContinue': _didContinue,
+      'usedItem': usedAutoFlagThisGame,
+      'cells': [
+        for (final row in grid)
+          for (final c in row)
+            [c.isMine ? 1 : 0, c.isRevealed ? 1 : 0, c.isFlagged ? 1 : 0, c.exploded ? 1 : 0, c.adjacent, c.isGolden ? 1 : 0],
+      ],
+    };
+  }
+
+  void restore(Map<String, dynamic> s) {
+    final diff = Difficulty.fromLabel((s['difficulty'] as String?) ?? '');
+    final cells = (s['cells'] as List?) ?? const [];
+    if (diff == null || cells.length != diff.rows * diff.cols) {
+      newGame();
+      return;
+    }
+    _stopTimer();
+    _isReconfiguring = true;
+    difficulty = diff;
+    _isReconfiguring = false;
+    _isSolo = true;
+    rule = RaceRule.speed;
+    shared = false;
+    seed = (s['seed'] as num).toInt();
+    elapsed = (s['elapsed'] as num?)?.toInt() ?? 0;
+    _minesPlaced = true;
+    _resetReviveState();
+    _didContinue = s['didContinue'] == true;
+    usedAutoFlagThisGame = s['usedItem'] != false;
+    autoFlagTickets = min(autoFlagSupplier(), soloAutoFlagCap(difficulty));
+    radarTickets = min(radarSupplier(), difficulty.radarCap);
+    soloWinResult = null;
+    final cols = diff.cols;
+    grid = [
+      for (var r = 0; r < diff.rows; r++)
+        [
+          for (var c = 0; c < cols; c++)
+            () {
+              final d = (cells[r * cols + c] as List).cast<num>();
+              return Cell(r * cols + c)
+                ..isMine = d[0] == 1
+                ..isRevealed = d[1] == 1
+                ..isFlagged = d[2] == 1
+                ..exploded = d[3] == 1
+                ..adjacent = d[4].toInt()
+                ..isGolden = d.length > 5 && d[5] == 1;
+            }(),
+        ],
+    ];
+    // 이미 깃발 꽂힌 황금지뢰는 재보상 막기.
+    for (final row in grid) {
+      for (final c in row) {
+        if (c.isGolden && c.isFlagged && c.isMine) _goldenAwarded.add(c.id);
+      }
+    }
+    state = GameState.playing;
+    _startTimer();
+    notifyListeners();
+  }
+
   // MARK: - 판 코드 / 최고 기록
 
   static String makeCode(Difficulty difficulty, int seed) {

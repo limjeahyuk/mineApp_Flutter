@@ -10,6 +10,7 @@ import '../game/item_dock.dart';
 import '../progression/daily.dart';
 import 'treasure_board.dart';
 import 'treasure_model.dart';
+import '../progression/title.dart';
 
 /// 보물찾기 혼자 연습 — Swift TreasureView 이식(51×51, 깃발 모드 기본 ON).
 class TreasureSoloScreen extends StatefulWidget {
@@ -37,6 +38,7 @@ class _TreasureSoloScreenState extends State<TreasureSoloScreen> {
     game.onGoldenMineFound = () {
       inv.awardGoldenMine();
       Daily.bump(DailyKind.golden);
+      announceAchievements();
       Haptics.success();
     };
     game.loadAutoFlagSupply();

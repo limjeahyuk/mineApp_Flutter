@@ -10,6 +10,7 @@ import '../multiplayer/multiplayer.dart';
 import '../progression/daily.dart';
 import '../ranking/ranking_service.dart';
 import 'touch_model.dart';
+import '../progression/title.dart';
 
 enum CoopFlow { searching, racing, finished }
 
@@ -52,6 +53,7 @@ class CoopController extends ChangeNotifier {
     model.onGoldenMineFound = () {
       inv.awardGoldenMine();
       Daily.bump(DailyKind.golden);
+      announceAchievements();
       Haptics.success();
     };
   }
@@ -205,6 +207,7 @@ class CoopController extends ChangeNotifier {
         // 만남 = 공동 성공 → 걸린 시간을 협동 랭킹에(1회).
         final inv = LocalStore.shared;
         Daily.bump(DailyKind.touch);
+      announceAchievements();
         if (inv.recordTouch(model.elapsed)) {
           RankingService().submitTouchBest(
               name: inv.nickname,

@@ -14,6 +14,7 @@ import '../progression/daily.dart';
 import '../ranking/ranking_service.dart';
 import 'board_widget.dart';
 import 'item_dock.dart';
+import '../progression/title.dart';
 
 /// 최고급(가로 허용) 판이면 세로+가로, 아니면 세로 고정 — Swift setAppOrientation 대응.
 void setAppOrientationFor(Difficulty? d) {
@@ -104,7 +105,7 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen> {
+class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   final GameModel game = GameModel();
   final TransformationController _zoom = TransformationController();
   Size _boardViewport = Size.zero;
@@ -117,6 +118,7 @@ class _GameScreenState extends State<GameScreen> {
   String? coinToast;
   GameState _lastState = GameState.ready;
   SoloWinResult? _lastWin;
+  Map<String, dynamic>? pendingResume; // 앱 종료 후 복원할 진행 판(이어서/새로 선택 대기)
 
   static const contentMaxWidth = 460.0;
 
@@ -133,6 +135,7 @@ class _GameScreenState extends State<GameScreen> {
     game.onGoldenMineFound = () {
       inv.awardGoldenMine();
       Daily.bump(DailyKind.golden);
+      announceAchievements();
       Haptics.success();
       final msg = '💰 황금지뢰 발견! +${LocalStore.goldenMineReward} 코인';
       setState(() => coinToast = msg);
@@ -145,6 +148,7 @@ class _GameScreenState extends State<GameScreen> {
       inv.awardClearReward(d);
       if (noItem) inv.recordNoItemHardClear(d);
       Daily.bump(DailyKind.clears);
+      announceAchievements();
       if (isBest) {
         RankingService().submitBest(ScoreEntry(
           name: inv.nickname,
@@ -158,8 +162,20 @@ class _GameScreenState extends State<GameScreen> {
     };
     game.addListener(_onGameChanged);
     _zoom.addListener(() => setState(() {}));
+    WidgetsBinding.instance.addObserver(this);
+    // 저장된 진행 판이 있으면 자동 시작하지 않고 이어서/새로 선택을 받는다.
+    pendingResume = inv.loadSoloResume();
     game.startSolo(widget.initialDifficulty);
     setAppOrientationFor(widget.initialDifficulty);
+  }
+
+  // 백그라운드로 갈 때 진행 중 솔로 판을 저장 → 앱을 완전히 꺼도 복원.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      final snap = game.makeResumeSnapshot();
+      if (snap != null) LocalStore.shared.saveSoloResume(snap);
+    }
   }
 
   void _onGameChanged() {
@@ -170,6 +186,7 @@ class _GameScreenState extends State<GameScreen> {
       showLossPopup = s == GameState.lost;
       if (s == GameState.won) Haptics.success();
       if (s == GameState.lost) Haptics.error();
+      if (s == GameState.won || s == GameState.lost) LocalStore.shared.clearSoloResume();
     }
     final w = game.soloWinResult;
     if (w != null && !identical(w, _lastWin)) {
@@ -192,6 +209,7 @@ class _GameScreenState extends State<GameScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     setAppOrientationFor(null);
     game.removeListener(_onGameChanged);
     _zoom.dispose();
@@ -209,9 +227,30 @@ class _GameScreenState extends State<GameScreen> {
     game.newGame();
   }
 
+  /// 홈으로 나가면 진행 중 판은 버린다(이어하기는 "앱 종료 후 복원"용).
   void _goHome() {
     Haptics.tap();
+    LocalStore.shared.clearSoloResume();
     Navigator.of(context).pop();
+  }
+
+  void _resumeSaved() {
+    final snap = pendingResume;
+    if (snap == null) return;
+    setState(() {
+      flagMode = false;
+      pendingResume = null;
+    });
+    game.restore(snap);
+    _lastState = game.state;
+    setAppOrientationFor(game.difficulty);
+    LocalStore.shared.clearSoloResume();
+  }
+
+  void _discardSavedAndStartNew() {
+    LocalStore.shared.clearSoloResume();
+    setState(() => pendingResume = null);
+    game.startSolo(widget.initialDifficulty);
   }
 
   void _handleProbe(int r, int c) {
@@ -232,7 +271,7 @@ class _GameScreenState extends State<GameScreen> {
 
   bool get _itemUsesEdgeDrawer =>
       game.difficulty == Difficulty.expert || game.difficulty == Difficulty.ultimate;
-  bool get _anyPopupShowing => showLossPopup || showWinPopup;
+  bool get _anyPopupShowing => showLossPopup || showWinPopup || pendingResume != null;
   bool get _isDense => game.difficulty == Difficulty.expert;
 
   @override
@@ -274,6 +313,7 @@ class _GameScreenState extends State<GameScreen> {
               ),
             if (showLossPopup) _lossPopup(t),
             if (showWinPopup) _winPopup(t),
+            if (pendingResume != null) _resumePopup(t),
           ],
         ),
       ),
@@ -602,6 +642,32 @@ class _GameScreenState extends State<GameScreen> {
               child: Text('보드 보기',
                   style: sf(14, weight: W.medium, color: t.textSecondary)),
             ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _resumePopup(AppTheme t) {
+    final snap = pendingResume!;
+    final diffName = (snap['difficulty'] as String?) ?? '';
+    final secs = (snap['elapsed'] as num?)?.toInt() ?? 0;
+    return Positioned.fill(
+      child: ColoredBox(
+        color: Colors.black.withValues(alpha: 0.6),
+        child: Center(
+          child: _popupCard(t, children: [
+            const Text('⏸️', style: TextStyle(fontSize: 50, height: 1.1)),
+            const SizedBox(height: 14),
+            Text('이어서 할까요?', style: sf(21, weight: W.bold, color: t.text)),
+            const SizedBox(height: 14),
+            Text('$diffName · $secs초까지 진행한 판이 있어요.',
+                textAlign: TextAlign.center, style: sf(14, color: t.textSecondary)),
+            const SizedBox(height: 20),
+            _bigButton('이어서 하기',
+                icon: SF.uturnBackward, fill: accentGreen, fg: Colors.white, onTap: _resumeSaved),
+            const SizedBox(height: 14),
+            _bigButton('새로 하기', fill: t.fillElevated, fg: t.text, onTap: _discardSavedAndStartNew),
           ]),
         ),
       ),

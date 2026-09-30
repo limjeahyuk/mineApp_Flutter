@@ -276,6 +276,66 @@ class Title {
   }
 }
 
+/// 갓 해금한 칭호(축하 배너용) — main의 오버레이가 구독해 잠깐 띄운다. Swift pendingUnlockToast.
+final ValueNotifier<Title?> titleUnlockToast = ValueNotifier(null);
+
+/// 통계가 바뀐 지점(클리어·대전·협동·황금지뢰·뽑기·테마)에서 호출 — 새로 해금된 것 중
+/// 가장 높은 희귀도 1개를 배너로 알린다.
+void announceAchievements() {
+  final newly = refreshAchievements();
+  if (newly.isEmpty) return;
+  newly.sort((a, b) => b.rarity.index.compareTo(a.rarity.index));
+  titleUnlockToast.value = newly.first;
+}
+
+/// 새 칭호 획득 배너 — Swift TitleUnlockBanner 이식.
+class TitleUnlockBanner extends StatelessWidget {
+  const TitleUnlockBanner({super.key, required this.title, required this.dark});
+  final Title title;
+  final bool dark;
+
+  @override
+  Widget build(BuildContext context) {
+    Color g(double d, double l) {
+      final v = ((dark ? d : l) * 255).round();
+      return Color.fromARGB(255, v, v, v);
+    }
+
+    final c = title.rarity.color;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: g(0.115, 1.0),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.withValues(alpha: 0.5)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 24, offset: const Offset(0, 4))
+        ],
+      ),
+      child: Row(children: [
+        Icon(CupertinoIcons.rosette, size: 20, color: c),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text('새 칭호 획득!',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: g(0.60, 0.40))),
+            const SizedBox(height: 2),
+            Text(title.name,
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: g(0.96, 0.12))),
+          ]),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(color: c.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(100)),
+          child: Text(title.rarity.label,
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: c)),
+        ),
+      ]),
+    );
+  }
+}
+
 /// 달성한 업적 칭호를 해금한다. 새로 해금된 칭호 목록 반환.
 List<Title> refreshAchievements() {
   final s = LocalStore.shared;

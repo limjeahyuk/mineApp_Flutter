@@ -25,6 +25,17 @@
 				<string>com.googleusercontent.apps.470995040821-9b5mt4bfebc47ippul9240q0fo7p31co</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.imjaehyeog.MineApp.invite</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- 방 초대 딥링크(mineapp://…?g=게임&c=코드) — 원본과 동일 -->
+				<string>mineapp</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleName</key>
 	<string>mine_app</string>

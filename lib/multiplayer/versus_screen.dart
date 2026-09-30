@@ -15,6 +15,7 @@ import 'firebase_match_service.dart';
 import 'mp_ui.dart';
 import 'multiplayer.dart';
 import 'race_controller.dart';
+import '../progression/title.dart';
 
 /// 대전(레이스) 화면 — Swift MultiplayerView 이식. 검색 → 카운트다운 → 레이스 → 결과.
 /// 스피드/지뢰 대결/합동(봇 포함), 자동깃발·레이더 도크, 자리비움 경고/항복.
@@ -53,6 +54,7 @@ class _VersusScreenState extends State<VersusScreen> with WidgetsBindingObserver
     g.onGoldenMineFound = () {
       inv.awardGoldenMine();
       Daily.bump(DailyKind.golden);
+      announceAchievements();
       Haptics.success();
     };
     ctrl.addListener(_onCtrl);
@@ -82,11 +84,13 @@ class _VersusScreenState extends State<VersusScreen> with WidgetsBindingObserver
       case RaceResult.win:
         inv.recordRaceWin();
         Daily.bump(DailyKind.raceWins);
+      announceAchievements();
       case RaceResult.lose:
         inv.recordRaceLoss();
       case RaceResult.draw:
         inv.recordRaceDraw();
     }
+    announceAchievements();
   }
 
   @override

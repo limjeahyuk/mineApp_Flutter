@@ -5,6 +5,7 @@ import '../core/haptics.dart';
 import '../core/local_store.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
+import '../progression/title.dart';
 
 /// 환경설정 — Swift StartView.SettingsView 이식.
 /// 화면 테마(시스템/라이트/다크) + 색상 테마 갤러리(스킨 구매·적용) + 게임 햅틱.
@@ -212,6 +213,7 @@ class _SettingsScreenState extends State<SettingsScreen> with ToastMixin {
     if (s.purchaseTheme(th.id)) {
       Haptics.success();
       setColorTheme(th.id);
+      announceAchievements();
     }
   }
 
