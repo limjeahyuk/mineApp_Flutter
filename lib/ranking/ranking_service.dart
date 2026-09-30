@@ -24,12 +24,14 @@ class ScoreEntry {
 /// Firestore `scores` 컬렉션(named DB `mineappdatabase`) 랭킹 제출/조회.
 /// docId = `deviceId_난이도` 로 기기·난이도별 1행(최고 기록)만 유지 — Swift와 동일.
 class RankingService {
-  RankingService({FirebaseFirestore? firestore})
-      : _db = firestore ??
-            FirebaseFirestore.instanceFor(
-                app: Firebase.app(), databaseId: 'mineappdatabase');
+  RankingService({FirebaseFirestore? firestore}) : _override = firestore;
 
-  final FirebaseFirestore _db;
+  final FirebaseFirestore? _override;
+
+  /// Firebase가 준비되지 않았어도(오프라인·테스트) 생성은 실패하지 않게 지연 조회.
+  FirebaseFirestore get _db =>
+      _override ??
+      FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'mineappdatabase');
   static const _collection = 'scores';
 
   /// 개인 신기록 upsert. 규칙(auth != null) 만족 위해 익명 로그인 보장.

@@ -97,16 +97,20 @@ Widget toggleSquare(AppTheme t,
 
 /// 솔로 게임 화면 — Swift ContentView 이식.
 class GameScreen extends StatefulWidget {
-  const GameScreen({super.key, this.initialDifficulty = Difficulty.beginner});
+  const GameScreen({super.key, this.initialDifficulty = Difficulty.beginner, this.debugGame});
 
   final Difficulty initialDifficulty;
+
+  /// 테스트에서 판을 직접 조작하려고 주입하는 모델(평소엔 null).
+  @visibleForTesting
+  final GameModel? debugGame;
 
   @override
   State<GameScreen> createState() => _GameScreenState();
 }
 
 class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
-  final GameModel game = GameModel();
+  late final GameModel game = widget.debugGame ?? GameModel();
   final TransformationController _zoom = TransformationController();
   Size _boardViewport = Size.zero;
   bool flagMode = false;
