@@ -67,8 +67,17 @@ class TreasureModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _timer?.cancel();
     super.dispose();
+  }
+
+  bool _disposed = false;
+
+  /// 지연 콜백(폭발 연출 등)이 화면을 닫은 뒤 도착해도 안전하게.
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
   }
 
   // MARK: - 파생 값

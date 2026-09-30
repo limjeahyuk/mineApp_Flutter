@@ -170,10 +170,12 @@ class LocalStore {
 
   int get ownedFlags => _owned(_kOwnedFlags, _startFlags);
   int get ownedRadars => _owned(_kOwnedRadars, _startRadars);
-  int get ownedMegaphones => _owned(_kOwnedMegaphones, 0);
+  int get ownedMegaphones => _owned(_kOwnedMegaphones, 5); // 시작 지급 5(원본 startingMegaphones)
 
   void consumeFlag() =>
       _prefs.setInt(_kOwnedFlags, max(0, ownedFlags - 1));
+  void consumeMegaphone() =>
+      _prefs.setInt(_kOwnedMegaphones, max(0, ownedMegaphones - 1));
   void consumeRadar() =>
       _prefs.setInt(_kOwnedRadars, max(0, ownedRadars - 1));
 

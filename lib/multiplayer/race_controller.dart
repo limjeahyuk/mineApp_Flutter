@@ -25,6 +25,70 @@ class RaceController extends ChangeNotifier {
     game.onPushFlag = (index, set) => service.pushFlag(index, set: set);
     service.onRemoteBoard = (board) => game.applySharedState(board);
     game.onGoldenMineFound = () => Haptics.success();
+    game.onLocalAction = _registerActivity;
+  }
+
+  // ── 자리비움(AFK) 항복 — 30초 무조작이면 경고, 총 120초면 항복(패배) 후 나가기 ──
+  bool afkWarning = false;
+  int afkRemaining = 0;
+  bool shouldExit = false; // 자리비움 항복 → 화면이 닫아야 함
+  bool forfeitedByAfk = false;
+  Timer? _afkTimer;
+  DateTime _lastActivity = DateTime.now();
+  static const _afkWarn = Duration(seconds: 30);
+  static const _afkForfeit = Duration(seconds: 120);
+
+  void _startAfkTimer() {
+    _lastActivity = DateTime.now();
+    afkWarning = false;
+    _afkTimer?.cancel();
+    _afkTimer = Timer.periodic(const Duration(seconds: 1), (_) => _checkAfk());
+  }
+
+  void _stopAfkTimer() {
+    _afkTimer?.cancel();
+    _afkTimer = null;
+    afkWarning = false;
+  }
+
+  void _registerActivity() {
+    _lastActivity = DateTime.now();
+    if (afkWarning) {
+      afkWarning = false;
+      notifyListeners();
+    }
+  }
+
+  /// 경고 배너 탭 = 계속하기.
+  void stayActive() => _registerActivity();
+
+  /// 앱 백그라운드 동안은 자리비움으로 세지 않는다.
+  void setSceneActive(bool active) {
+    if (flow != RaceFlow.racing || result != null) return;
+    if (active) {
+      _startAfkTimer();
+    } else {
+      _stopAfkTimer();
+    }
+  }
+
+  void _checkAfk() {
+    if (flow != RaceFlow.racing || result != null) {
+      _stopAfkTimer();
+      return;
+    }
+    final idle = DateTime.now().difference(_lastActivity);
+    if (idle >= _afkForfeit) {
+      _stopAfkTimer();
+      forfeitedByAfk = true;
+      service.leave(); // 상대 부전승
+      shouldExit = true;
+      notifyListeners();
+    } else if (idle >= _afkWarn) {
+      afkRemaining = ((_afkForfeit - idle).inMilliseconds / 1000).ceil();
+      afkWarning = true;
+      notifyListeners();
+    }
   }
 
   final GameModel game = GameModel();
@@ -136,6 +200,7 @@ class RaceController extends ChangeNotifier {
     _lastState = game.state;
     flow = RaceFlow.racing;
     service.beginRace();
+    _startAfkTimer();
     notifyListeners();
   }
 
@@ -174,6 +239,7 @@ class RaceController extends ChangeNotifier {
 
   void leave() {
     _countdown?.cancel();
+    _stopAfkTimer();
     service.leave();
   }
 
@@ -254,6 +320,7 @@ class RaceController extends ChangeNotifier {
   }
 
   void _finish(RaceResult r) {
+    _stopAfkTimer();
     result = r;
     flow = RaceFlow.finished;
     switch (r) {

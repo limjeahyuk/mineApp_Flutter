@@ -4,103 +4,94 @@ import 'package:flutter/foundation.dart';
 
 import '../core/board.dart';
 import '../core/haptics.dart';
+import '../core/local_store.dart';
 import '../core/types.dart';
 import '../multiplayer/multiplayer.dart';
+import '../progression/daily.dart';
 import 'treasure_model.dart';
 
-enum TreasureFlow { searching, starting, racing, finished }
+enum TreasureFlow { searching, racing, finished }
 
-/// 보물찾기 한 판 진행 — TreasureModel(중앙 보물 경쟁) + MatchService.
-/// 매칭→카운트다운→먼저 중앙 보물을 열면 승리. Swift TreasureRaceViewModel 핵심 이식.
+/// 보물찾기 온라인 레이스 — Swift TreasureRaceViewModel 이식.
+/// 검색 → (같은 시드 + 반대 꼭짓점) 공유 보드 레이스 → 결과. 보드는 51×51 고정(원본과 동일, 크로스플레이 정합).
 class TreasureController extends ChangeNotifier {
-  TreasureController(this.service, {int size = 15})
-      : model = TreasureModel(size: size) {
+  TreasureController(this.service, {int size = 51}) : model = TreasureModel(size: size) {
     model.addListener(_onChange);
     service.onRoomCode = (c) {
       roomCode = c;
       notifyListeners();
     };
-    service.onOpponent = (s) {
-      opponent = s;
-      notifyListeners();
-      _checkOpponent();
-    };
+    service.onOpponent = _handleOpponent;
     service.onOpponentLeft = _onOpponentLeft;
     service.onRemoteBoard = (b) => model.applyRemote(b);
     model.onPushReveal = (safe, exp) => service.pushReveal(safe, exp);
-    model.onGoldenMineFound = Haptics.success;
+    final inv = LocalStore.shared;
+    model.autoFlagSupplier = () => inv.ownedFlags;
+    model.onConsumeAutoFlag = inv.consumeFlag;
+    model.onGoldenMineFound = () {
+      inv.awardGoldenMine();
+      Daily.bump(DailyKind.golden);
+      Haptics.success();
+    };
   }
 
   final TreasureModel model;
   final MatchService service;
 
   TreasureFlow flow = TreasureFlow.searching;
-  int startCountdown = 3;
   OpponentStatus opponent = OpponentStatus();
   RaceResult? result;
   bool opponentLeft = false;
+  bool opponentFailedByMines = false;
+  bool rematching = false;
   MatchInfo? match;
   String? roomCode;
   MatchError? failure;
+  String opponentName = '상대';
+  String opponentTitle = '';
 
-  RaceMode _mode = RaceMode.quick(Difficulty.intermediate, RaceRule.speed);
+  RaceMode _mode = RaceMode.quick(Difficulty.beginner, RaceRule.speed);
   GameState _lastState = GameState.ready;
   DateTime _lastReport = DateTime.fromMillisecondsSinceEpoch(0);
-  Timer? _countdown;
 
   double get myProgress => model.progress;
-  double get opponentProgress => opponent.progress;
+  double get opponentProgress => model.opponentProgress;
 
   void start(RaceMode mode) {
     _mode = mode;
     flow = TreasureFlow.searching;
     result = null;
+    roomCode = null;
     failure = null;
+    opponent = OpponentStatus();
     opponentLeft = false;
+    opponentFailedByMines = false;
     notifyListeners();
-    _findMatch(mode).then((info) {
-      match = info;
-      _beginCountdown(info);
-    }).catchError((Object e) {
+    _findMatch(mode).then(_begin).catchError((Object e) {
       if (e != MatchError.cancelled) {
-        failure = e is MatchError ? e : MatchError.opponentLeft;
+        failure = e is MatchError ? e : MatchError.roomNotFound;
         notifyListeners();
       }
     });
   }
 
+  // 보드 고정(51)이라 difficulty/rule은 placeholder — 시드만 쓴다.
   Future<MatchInfo> _findMatch(RaceMode mode) {
     switch (mode.kind) {
       case RaceModeKind.quick:
-      case RaceModeKind.bot: // 보물 봇 미이식 — 랜덤 매칭과 동일 처리(메뉴에서 도달 불가)
-        return service.find(mode.difficulty!, mode.rule);
+      case RaceModeKind.bot:
+        return service.find(Difficulty.beginner, RaceRule.speed);
       case RaceModeKind.host:
-        return service.createRoom(mode.difficulty!, mode.rule);
+        return service.createRoom(Difficulty.beginner, RaceRule.speed);
       case RaceModeKind.join:
         return service.joinRoom(mode.code!);
     }
   }
 
-  void _beginCountdown(MatchInfo info) {
-    _countdown?.cancel();
-    flow = TreasureFlow.starting;
-    startCountdown = 3;
-    Haptics.tap();
-    notifyListeners();
-    _countdown = Timer.periodic(const Duration(milliseconds: 800), (t) {
-      startCountdown -= 1;
-      if (startCountdown <= 0) {
-        t.cancel();
-        _begin(info);
-      } else {
-        Haptics.tap();
-      }
-      notifyListeners();
-    });
-  }
-
   void _begin(MatchInfo info) {
-    if (flow != TreasureFlow.starting) return;
+    match = info;
+    opponentName = info.opponentName;
+    opponentTitle = info.opponentTitle;
     model.startShared(seed: info.seed, asHost: info.isHost);
     _lastState = model.state;
     flow = TreasureFlow.racing;
@@ -108,25 +99,47 @@ class TreasureController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// "다시 매칭" — 코드로 만난 상대는 같은 상대와 재대결, 랜덤은 새 상대.
+  void rematch() {
+    if (_mode.kind == RaceModeKind.quick) {
+      service.leave();
+      start(_mode);
+      return;
+    }
+    flow = TreasureFlow.searching;
+    rematching = true;
+    result = null;
+    roomCode = null;
+    failure = null;
+    opponent = OpponentStatus();
+    opponentLeft = false;
+    opponentFailedByMines = false;
+    notifyListeners();
+    service.rematch().then((info) {
+      rematching = false;
+      _begin(info);
+    }).catchError((Object e) {
+      rematching = false;
+      if (e != MatchError.cancelled) {
+        failure = e is MatchError ? e : MatchError.opponentLeft;
+      }
+      notifyListeners();
+    });
+  }
+
   void _onChange() {
     notifyListeners();
     _report();
-    if (model.state != _lastState) {
-      _lastState = model.state;
-      if (flow == TreasureFlow.racing && result == null) {
-        if (model.state == GameState.won) {
-          service.report(
-              progress: 1, phase: RacerPhase.won, elapsed: model.elapsed, score: 0);
-          _finish(RaceResult.win);
-        } else if (model.state == GameState.lost) {
-          service.report(
-              progress: model.progress,
-              phase: RacerPhase.lost,
-              elapsed: model.elapsed,
-              score: 0);
-          _finish(RaceResult.lose);
-        }
-      }
+    if (model.state == _lastState) return;
+    _lastState = model.state;
+    if (flow != TreasureFlow.racing || result != null) return;
+    if (model.state == GameState.won) {
+      service.report(progress: 1, phase: RacerPhase.won, elapsed: model.elapsed, score: 0);
+      _finish(RaceResult.win);
+    } else if (model.state == GameState.lost && model.failedByMines) {
+      service.report(
+          progress: model.progress, phase: RacerPhase.lost, elapsed: model.elapsed, score: 0);
+      _finish(RaceResult.lose);
     }
   }
 
@@ -136,43 +149,45 @@ class TreasureController extends ChangeNotifier {
     if (now.difference(_lastReport) < const Duration(milliseconds: 500)) return;
     _lastReport = now;
     service.report(
-        progress: model.progress,
-        phase: RacerPhase.playing,
-        elapsed: model.elapsed,
-        score: 0);
+        progress: model.progress, phase: RacerPhase.playing, elapsed: model.elapsed, score: 0);
   }
 
-  void _checkOpponent() {
+  void _handleOpponent(OpponentStatus s) {
+    opponent = s;
+    notifyListeners();
     if (flow != TreasureFlow.racing || result != null) return;
-    if (opponent.phase == RacerPhase.won) _finish(RaceResult.lose);
+    if (s.phase == RacerPhase.won) {
+      _finish(RaceResult.lose);
+    } else if (s.phase == RacerPhase.lost) {
+      opponentFailedByMines = true;
+      _finish(RaceResult.win);
+    }
   }
 
   void _onOpponentLeft() {
     if (flow != TreasureFlow.racing || result != null) return;
     opponentLeft = true;
-    _finish(RaceResult.win); // 상대가 나가면 부전승
+    _finish(RaceResult.win);
   }
 
   void _finish(RaceResult r) {
     result = r;
     flow = TreasureFlow.finished;
-    r == RaceResult.win ? Haptics.success() : Haptics.error();
+    switch (r) {
+      case RaceResult.win:
+        Haptics.success();
+      case RaceResult.lose:
+        Haptics.error();
+      case RaceResult.draw:
+        Haptics.warning();
+    }
     notifyListeners();
   }
 
-  void rematch() {
-    service.leave();
-    start(_mode);
-  }
-
-  void leave() {
-    _countdown?.cancel();
-    service.leave();
-  }
+  void leave() => service.leave();
 
   @override
   void dispose() {
-    _countdown?.cancel();
     model.removeListener(_onChange);
     model.dispose();
     super.dispose();
