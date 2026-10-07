@@ -61,6 +61,7 @@ class NoticePopup extends StatelessWidget {
                               fontWeight: FontWeight.w500)),
                     ]),
                   ),
+<<<<<<< HEAD
                   Flexible(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxHeight: 340),
@@ -83,10 +84,33 @@ class NoticePopup extends StatelessWidget {
                                           color: t.textSecondary, fontSize: 15)),
                                 ],
                               ]),
+=======
+                ),
+              ),
+              Divider(height: 1, color: t.border.withValues(alpha: 0.4)),
+              // 하단 액션
+              Row(
+                children: [
+                  Expanded(
+                    child: PlainButton(
+                      onTap: () {
+                        LocalStore.shared.dismissNoticeForToday(notice.id);
+                        Navigator.of(context).pop();
+                      },
+                      child: SizedBox(
+                        height: 50,
+                        child: Center(
+                          child: Text('오늘은 그만 보기',
+                              style: TextStyle(
+                                  color: t.textSecondary,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500)),
+>>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
                         ),
                       ),
                     ),
                   ),
+<<<<<<< HEAD
                   Divider(height: 1, color: t.border.withValues(alpha: 0.4)),
                   Row(children: [
                     Expanded(
@@ -101,6 +125,20 @@ class NoticePopup extends StatelessWidget {
                                     fontSize: 15,
                                     fontWeight: FontWeight.w500)),
                           ),
+=======
+                  Container(width: 1, height: 28, color: t.border.withValues(alpha: 0.4)),
+                  Expanded(
+                    child: PlainButton(
+                      onTap: () => Navigator.of(context).pop(),
+                      child: const SizedBox(
+                        height: 50,
+                        child: Center(
+                          child: Text('닫기',
+                              style: TextStyle(
+                                  color: _accent,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold)),
+>>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
                         ),
                       ),
                     ),

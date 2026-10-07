@@ -25,6 +25,7 @@ class Haptics {
     } catch (_) {}
   }
 
+  // UINotificationFeedbackGenerator(success/warning/error) 근사.
   static void success() => _safe(HapticFeedback.mediumImpact);
   static void warning() => _safe(HapticFeedback.mediumImpact);
   static void error() => _safe(HapticFeedback.heavyImpact);

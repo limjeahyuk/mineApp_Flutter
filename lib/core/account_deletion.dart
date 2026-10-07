@@ -70,7 +70,11 @@ class AccountDeletion {
     } catch (_) {}
     for (final d in Difficulty.values) {
       try {
+<<<<<<< HEAD
         await _db.collection('scores').doc('${deviceId}_${d.label}').delete(); // 원본 docId = deviceId_난이도명
+=======
+        await _db.collection('scores').doc('${deviceId}_${d.label}').delete();
+>>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
       } catch (_) {}
     }
     try {

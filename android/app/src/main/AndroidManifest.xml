@@ -24,8 +24,12 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+<<<<<<< HEAD
             <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
             <!-- 방 초대 딥링크 mineapp://join?g=…&c=… (원본 InviteLink.scheme) -->
+=======
+            <!-- 방 초대 딥링크: mineapp://join?g=mine|treasure|touch&c=코드 -->
+>>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>

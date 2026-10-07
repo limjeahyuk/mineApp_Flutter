@@ -43,6 +43,9 @@ class TreasureModel extends ChangeNotifier {
   List<List<TrCell>> grid = [];
   GameState state = GameState.ready;
   int elapsed = 0;
+
+  /// 매초 증가 — 경과 시간 표시만 이걸 구독한다.
+  final ValueNotifier<int> tick = ValueNotifier(0);
   int minesHit = 0;
   bool failedByMines = false;
   static const int maxMineHits = 5; // 공유 보드에서 이만큼 밟으면 즉시 패배
@@ -71,6 +74,7 @@ class TreasureModel extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _timer?.cancel();
+    tick.dispose();
     super.dispose();
   }
 
@@ -630,7 +634,8 @@ class TreasureModel extends ChangeNotifier {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (state == GameState.playing && elapsed < 9999) {
         elapsed++;
-        notifyListeners();
+        // 보드(2,601칸) 전체가 매초 다시 그려지지 않도록 시계는 별도 알림으로만 갱신한다.
+        tick.value++;
       }
     });
   }

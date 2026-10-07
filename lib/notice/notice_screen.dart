@@ -5,7 +5,12 @@ import '../core/theme.dart';
 import '../core/ui.dart';
 import 'notice.dart';
 
+<<<<<<< HEAD
 /// 공지사항 시트 — Swift NoticeListView 이식. 고정 공지가 위로, 나머지는 최신순.
+=======
+/// 공지사항 화면 — Swift NoticeListView 이식. 고정 공지가 위로, 나머지는 최신순.
+/// 열면 가장 새 공지 시각을 읽음으로 저장해 홈 종(bell)의 점을 끈다.
+>>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
 class NoticeScreen extends StatefulWidget {
   const NoticeScreen({super.key});
 
@@ -26,6 +31,7 @@ class _NoticeScreenState extends State<NoticeScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
+<<<<<<< HEAD
     return SheetScaffold(
       title: '공지사항',
       child: ListenableBuilder(
@@ -53,6 +59,26 @@ class _NoticeScreenState extends State<NoticeScreen> {
   }
 
   Widget _card(AppTheme t, Notice n) => Container(
+=======
+    return SheetScaffold(title: '공지사항', child: _content(t));
+  }
+
+  Widget _content(AppTheme t) {
+    final notices = _notices;
+    if (notices == null) {
+      return Center(child: CupertinoActivityIndicator(color: t.textSecondary));
+    }
+    if (notices.isEmpty) return _emptyState(t);
+    return ListView.separated(
+      padding: const EdgeInsets.all(20),
+      itemCount: notices.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (_, i) => _noticeCard(t, notices[i]),
+    );
+  }
+
+  Widget _noticeCard(AppTheme t, Notice n) => Container(
+>>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration:

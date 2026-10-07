@@ -86,8 +86,23 @@ class ThemesOwnedGoal extends Goal {
   final int n;
 }
 
+<<<<<<< HEAD
 class CoinsAtLeastGoal extends Goal {
   const CoinsAtLeastGoal(this.n);
+=======
+class TouchClearsGoal extends Goal {
+  const TouchClearsGoal(this.n);
+  final int n;
+}
+
+class TouchUnderGoal extends Goal {
+  const TouchUnderGoal(this.sec);
+  final int sec;
+}
+
+class ThemesOwnedGoal extends Goal {
+  const ThemesOwnedGoal(this.n);
+>>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
   final int n;
 }
 
@@ -184,16 +199,28 @@ class Title {
         TitleSource.achievement(WinStreakGoal(5)), '대전 5연승'),
     Title('duelist', '승부사', TitleRarity.epic,
         TitleSource.achievement(RaceWinsGoal(50)), '대전에서 50승'),
+<<<<<<< HEAD
+=======
+    // 협동형
+>>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
     Title('soulmate', '환상의 짝꿍', TitleRarity.rare,
         TitleSource.achievement(TouchClearsGoal(10)), '‘너에게 닿기를’ 10회 성공'),
     Title('telepathy', '텔레파시', TitleRarity.epic,
         TitleSource.achievement(TouchUnderGoal(30)), '‘너에게 닿기를’ 30초 이내 성공'),
+<<<<<<< HEAD
+=======
+    // 경제/뽑기형
+>>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
     Title('golden_hand', '황금손', TitleRarity.rare,
         TitleSource.achievement(GoldenMinesGoal(100)), '황금지뢰 100개 발견'),
     Title('gacha_addict', '뽑기 중독', TitleRarity.rare,
         TitleSource.achievement(DrawsGoal(100)), '뽑기 100회'),
     Title('collector', '수집가', TitleRarity.rare,
         TitleSource.achievement(ThemesOwnedGoal(3)), '색상 테마 3개 보유'),
+<<<<<<< HEAD
+=======
+    // 히든
+>>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
     Title('jackpot', '잭팟 주인공', TitleRarity.legendary,
         TitleSource.achievement(JackpotGoal(1)), 'x3 뽑기에서 잭팟 터뜨리기',
         hidden: true),
@@ -207,6 +234,20 @@ class Title {
     Title('vip', 'VIP', TitleRarity.legendary, TitleSource.purchase(5000),
         '상점에서 코인으로 구매'),
   ];
+
+  bool get isStarter => source.kind == TitleSourceKind.starter;
+
+  /// 처음부터 보유하는 칭호 id 집합.
+  static Set<String> get starterIds =>
+      {for (final t in all) if (t.isStarter) t.id};
+
+  /// 표시 이름으로 칭호를 찾는다(랭킹/멀티는 이름만 주고받으므로 희귀도 색 복원용).
+  static Title? byName(String name) {
+    for (final t in all) {
+      if (t.name == name) return t;
+    }
+    return null;
+  }
 
   static Title? byId(String id) {
     for (final t in all) {
@@ -237,6 +278,7 @@ class TitleBadge extends StatelessWidget {
   final String name;
   final double size;
 
+<<<<<<< HEAD
   @override
   Widget build(BuildContext context) {
     if (name.isEmpty) return const SizedBox.shrink();
@@ -273,3 +315,115 @@ class TitleBadge extends StatelessWidget {
     );
   }
 }
+=======
+  switch (g) {
+    case ClearsGoal(:final d, :final n):
+      final c = s.soloClearCount(d);
+      return (current: c.clamp(0, n), target: n, done: c >= n);
+    case TotalClearsGoal(:final n):
+      final c = totalClears();
+      return (current: c.clamp(0, n), target: n, done: c >= n);
+    case BestUnderGoal(:final d, :final sec):
+      final best = s.soloBest(d);
+      final done = best != null && best <= sec;
+      return (current: done ? sec : 0, target: sec, done: done);
+    case RaceWinsGoal(:final n):
+      final c = s.raceWins;
+      return (current: c.clamp(0, n), target: n, done: c >= n);
+    case WinStreakGoal(:final n):
+      final c = s.bestWinStreak;
+      return (current: c.clamp(0, n), target: n, done: c >= n);
+    case NoItemClearGoal(:final d, :final n):
+      final c = d == Difficulty.expert
+          ? s.noItemExpertClears
+          : s.noItemUltimateClears;
+      return (current: c.clamp(0, n), target: n, done: c >= n);
+    case GoldenMinesGoal(:final n):
+      final c = s.goldenMinesFound;
+      return (current: c.clamp(0, n), target: n, done: c >= n);
+    case DrawsGoal(:final n):
+      final c = s.gachaDraws;
+      return (current: c.clamp(0, n), target: n, done: c >= n);
+    case JackpotGoal(:final n):
+      final c = s.gachaJackpots;
+      return (current: c.clamp(0, n), target: n, done: c >= n);
+    case CoinsAtLeastGoal(:final n):
+      final c = s.coins;
+      return (current: c.clamp(0, n), target: n, done: c >= n);
+    case TouchClearsGoal(:final n):
+      final c = s.touchClears;
+      return (current: c.clamp(0, n), target: n, done: c >= n);
+    case TouchUnderGoal(:final sec):
+      final best = s.touchBest;
+      final done = best != null && best <= sec;
+      return (current: done ? sec : 0, target: sec, done: done);
+    case ThemesOwnedGoal(:final n):
+      final c = s.ownedThemeIds.length;
+      return (current: c.clamp(0, n), target: n, done: c >= n);
+  }
+}
+
+/// 업적 진행도 표시 문구(업적탭용). 카운트형은 "3 / 10", 시간형은 최고기록/목표.
+String goalDisplay(Goal g) {
+  final s = LocalStore.shared;
+  switch (g) {
+    case BestUnderGoal(:final d, :final sec):
+      final best = s.soloBest(d);
+      return best != null ? '최고 $best초 · 목표 $sec초 이내' : '기록 없음 · 목표 $sec초 이내';
+    case TouchUnderGoal(:final sec):
+      final best = s.touchBest;
+      return best != null ? '최고 $best초 · 목표 $sec초 이내' : '기록 없음 · 목표 $sec초 이내';
+    default:
+      final p = goalProgress(g);
+      return '${p.current} / ${p.target}';
+  }
+}
+
+/// 달성한 업적 칭호를 해금한다. 새로 해금된 칭호 목록 반환(LocalStore에 위임).
+List<Title> refreshAchievements({bool announce = true}) =>
+    LocalStore.shared.refreshAchievements(announce: announce);
+
+/// 닉네임 아래에 작게 붙는 칭호 배지 — Swift `TitleBadgeView`. 멀티·랭킹·프로필·업적탭 공용.
+/// `name`이 비어 있으면(미착용) 아무것도 그리지 않는다. 희귀도 색은 카탈로그에서 이름으로 복원한다.
+class TitleBadge extends StatelessWidget {
+  const TitleBadge({super.key, required this.name, this.size = 10});
+  final String name;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    if (name.isEmpty) return const SizedBox.shrink();
+    final rarity = Title.byName(name)?.rarity ?? TitleRarity.common;
+    final c = rarity.color;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: size * 0.8, vertical: size * 0.3),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [c.withValues(alpha: 0.24), c.withValues(alpha: 0.10)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: c.withValues(alpha: 0.45), width: 0.8),
+        boxShadow: rarity == TitleRarity.legendary
+            ? [BoxShadow(color: c.withValues(alpha: 0.40), blurRadius: 4, offset: const Offset(0, 1))]
+            : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(rarity.icon, size: size, color: c),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: c, fontSize: size, fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+>>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
