@@ -19,7 +19,8 @@
 
 ## iOS 빌드 함정
 
-- **SPM 금지**: Xcode 16.2는 firebase-ios-sdk SPM 해석 불가 → `flutter config --no-enable-swift-package-manager`, CocoaPods 사용. pod 오류 시 `cd ios && pod repo update`.
+- **Xcode 27 + Swift Package Manager(CocoaPods 제거)**: Xcode 27은 아카이브 중 빌드 스크립트(rsync)가 pod·Flutter 엔진의 바이너리를 여는 걸 `Operation not permitted`로 막는다(터미널에선 정상, 보안 SW 없음 — 실측). 그래서 iOS 의존성은 SPM으로 받는다: `pubspec.yaml`의 `flutter: config: enable-swift-package-manager: true`(전역 `flutter config`보다 우선). Podfile/Pods는 없음 — 다시 만들지 말 것. 네이티브 플러그인은 전부 SPM 지원(path_provider_foundation은 FFI라 네이티브 없음). 새 플러그인 추가 시 `Package.swift` 지원 여부 확인. (예전 'SPM 금지'는 Xcode 16.2 한정 문제였음)
+- Flutter 엔진 dSYM 복사(release_unpack_ios)도 같은 이유로 막혔음 → Mac에서 `.../engine/ios-release/Flutter.xcframework/ios-arm64/dSYMs`를 치워 두면 그 단계를 건너뛴다(엔진 크래시 심볼만 빠짐, 업로드 경고는 무시 가능).
 - **Firebase Auth엔 Keychain Sharing 필수**: `ios/Runner/Runner.entitlements`(keychain-access-groups) + pbxproj `CODE_SIGN_ENTITLEMENTS`. deployment target 15.0.
 - 익명 인증/매칭은 `flutter run`으로만 동작(entitlement 임베드됨). `simctl install`한 빌드는 keychain 막혀 인증 전부 실패.
 
