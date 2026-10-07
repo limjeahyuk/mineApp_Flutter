@@ -41,6 +41,7 @@ class ShopLogic {
     _grant(item);
     _s.addGachaDraws(1);
     Daily.bump(DailyKind.draws);
+    _s.refreshAchievements();
     return item;
   }
 
@@ -61,6 +62,7 @@ class ShopLogic {
     }
     _s.addGachaDraws(3);
     Daily.bump(DailyKind.draws, by: 3);
+    _s.refreshAchievements();
     return TripleDrawResult(reels, jackpot);
   }
 }

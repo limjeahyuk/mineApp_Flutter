@@ -4,13 +4,14 @@ import 'package:flutter/foundation.dart';
 
 import '../core/game_model.dart';
 import '../core/haptics.dart';
+import '../core/local_store.dart';
 import '../core/types.dart';
 import 'multiplayer.dart';
 
 enum RaceFlow { searching, starting, racing, finished }
 
 /// 레이스 한 판 진행 — 로컬 GameModel + MatchService를 묶어 매칭→카운트다운→레이스→결과를
-/// 담당한다. Swift RaceViewModel 이식. (AFK 자동항복은 후속 단계로 미이식)
+/// 담당한다. Swift RaceViewModel 이식(자리비움 항복·전적 기록 포함).
 class RaceController extends ChangeNotifier {
   RaceController(this.service) {
     service.onRoomCode = (code) {
@@ -24,7 +25,21 @@ class RaceController extends ChangeNotifier {
     game.onPushReveal = (safe, exploded) => service.pushReveal(safe, exploded);
     game.onPushFlag = (index, set) => service.pushFlag(index, set: set);
     service.onRemoteBoard = (board) => game.applySharedState(board);
-    game.onGoldenMineFound = () => Haptics.success();
+    // 내 조작이 있으면 자리비움 타이머 리셋
+    game.onLocalAction = _registerActivity;
+    final store = LocalStore.maybeShared;
+    if (store != null) {
+      // 자동깃발·레이더: 보유 인벤토리에서 채우고 쓸 때마다 영구 차감(봇은 미연결=0).
+      game.autoFlagSupplier = () => store.ownedFlags;
+      game.onConsumeAutoFlag = () => store.consumeFlag();
+      game.radarSupplier = () => store.ownedRadars;
+      game.onConsumeRadar = () => store.consumeRadar();
+      // 황금지뢰를 깃발로 발견하면 개당 코인 보상
+      game.onGoldenMineFound = () {
+        store.awardGoldenMine();
+        Haptics.success();
+      };
+    }
   }
 
   final GameModel game = GameModel();
@@ -39,6 +54,9 @@ class RaceController extends ChangeNotifier {
   String? roomCode;
   MatchError? failure;
   bool rematching = false;
+  bool afkWarning = false; // 자리비움 경고 배너
+  int afkRemaining = 0; // 항복까지 남은 초
+  bool shouldExit = false; // 자리비움 항복 등으로 화면을 닫아야 할 때
 
   RaceMode _mode = RaceMode.quick(Difficulty.beginner, RaceRule.speed);
   GameState _lastState = GameState.ready;
@@ -80,15 +98,19 @@ class RaceController extends ChangeNotifier {
     flow = RaceFlow.searching;
     result = null;
     opponentLeft = false;
+    afkWarning = false;
+    shouldExit = false;
     roomCode = null;
     failure = null;
     opponent = OpponentStatus();
     notifyListeners();
     _matchInfo(mode).then((info) {
+      if (_disposed) return;
       match = info;
       game.difficulty = info.difficulty;
       _beginStartCountdown(info);
     }).catchError((Object e) {
+      if (_disposed || e == MatchError.cancelled) return;
       failure = e is MatchError ? e : MatchError.roomNotFound;
       notifyListeners();
     });
@@ -136,17 +158,19 @@ class RaceController extends ChangeNotifier {
     _lastState = game.state;
     flow = RaceFlow.racing;
     service.beginRace();
+    _startAfkTimer();
     notifyListeners();
   }
 
   // ── 재대결 ──
+  /// "다시하기". 코드로 만난 상대(host/join)는 같은 상대와 자동 재대결하고,
+  /// 랜덤/봇은 새 상대를 찾는다.
   void rematch() {
-    // 방/코드/봇은 같은 상대로 새 판(service.rematch), 랜덤은 새로 매칭.
-    if (_mode.kind == RaceModeKind.quick) {
+    if (_mode.kind == RaceModeKind.host || _mode.kind == RaceModeKind.join) {
+      _startRematch();
+    } else {
       service.leave();
       start(_mode);
-    } else {
-      _startRematch();
     }
   }
 
@@ -155,15 +179,20 @@ class RaceController extends ChangeNotifier {
     rematching = true;
     result = null;
     opponentLeft = false;
+    afkWarning = false;
+    shouldExit = false;
+    roomCode = null;
     failure = null;
     opponent = OpponentStatus();
     notifyListeners();
     service.rematch().then((info) {
+      if (_disposed) return;
       match = info;
       rematching = false;
       game.difficulty = info.difficulty;
       _beginStartCountdown(info);
     }).catchError((Object e) {
+      if (_disposed) return;
       rematching = false;
       if (e != MatchError.cancelled) {
         failure = e is MatchError ? e : MatchError.opponentLeft;
@@ -174,12 +203,17 @@ class RaceController extends ChangeNotifier {
 
   void leave() {
     _countdown?.cancel();
+    _stopAfkTimer();
     service.leave();
   }
 
+  bool _disposed = false;
+
   @override
   void dispose() {
+    _disposed = true;
     _countdown?.cancel();
+    _afkTimer?.cancel();
     game.removeListener(_onGameChanged);
     game.dispose();
     super.dispose();
@@ -253,9 +287,78 @@ class RaceController extends ChangeNotifier {
     _finish(game.rule == RaceRule.coop ? RaceResult.lose : RaceResult.win);
   }
 
+  // ── 자리비움(AFK) 항복 ──
+  // 30초 동안 아무 조작이 없으면 경고 배너, 그로부터 90초(총 120초)가 지나면 항복(패배) 후 나간다.
+  Timer? _afkTimer;
+  DateTime _lastActivity = DateTime.now();
+  static const _afkWarnSeconds = 30;
+  static const _afkForfeitSeconds = 120;
+
+  void _startAfkTimer() {
+    _lastActivity = DateTime.now();
+    afkWarning = false;
+    _afkTimer?.cancel();
+    _afkTimer = Timer.periodic(const Duration(seconds: 1), (_) => _checkAfk());
+  }
+
+  void _stopAfkTimer() {
+    _afkTimer?.cancel();
+    _afkTimer = null;
+    afkWarning = false;
+  }
+
+  void _registerActivity() {
+    _lastActivity = DateTime.now();
+    if (afkWarning) {
+      afkWarning = false;
+      notifyListeners();
+    }
+  }
+
+  /// 경고 배너의 "계속하기" — 자리비움 시계를 리셋한다.
+  void stayActive() => _registerActivity();
+
+  /// 앱이 백그라운드↔포그라운드로 전환될 때 — 백그라운드에 있던 시간은 자리비움으로 세지 않는다.
+  void setSceneActive(bool active) {
+    if (flow != RaceFlow.racing || result != null) return;
+    if (active) {
+      _startAfkTimer();
+    } else {
+      _stopAfkTimer();
+    }
+    notifyListeners();
+  }
+
+  void _checkAfk() {
+    if (flow != RaceFlow.racing || result != null) {
+      _stopAfkTimer();
+      return;
+    }
+    final idle = DateTime.now().difference(_lastActivity).inMilliseconds / 1000;
+    if (idle >= _afkForfeitSeconds) {
+      _forfeitByAfk();
+    } else if (idle >= _afkWarnSeconds) {
+      afkRemaining = (_afkForfeitSeconds - idle).ceil().clamp(0, 999);
+      afkWarning = true;
+      notifyListeners();
+    }
+  }
+
+  /// 자리비움 항복: 패배로 기록하고 매치에서 나간 뒤(상대 부전승) 화면을 닫는다.
+  void _forfeitByAfk() {
+    if (flow != RaceFlow.racing || result != null) return;
+    _stopAfkTimer();
+    LocalStore.maybeShared?.recordRace(RaceResult.lose);
+    service.leave();
+    shouldExit = true;
+    notifyListeners();
+  }
+
   void _finish(RaceResult r) {
+    _stopAfkTimer();
     result = r;
     flow = RaceFlow.finished;
+    LocalStore.maybeShared?.recordRace(r); // 대전 전적(승/패/무) 누적
     switch (r) {
       case RaceResult.win:
         Haptics.success();

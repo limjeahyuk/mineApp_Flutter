@@ -57,7 +57,7 @@ class AccountDeletion {
     } catch (_) {}
     for (final d in Difficulty.values) {
       try {
-        await _db.collection('scores').doc('${deviceId}_${d.code}').delete();
+        await _db.collection('scores').doc('${deviceId}_${d.label}').delete();
       } catch (_) {}
     }
     try {

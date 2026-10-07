@@ -15,10 +15,15 @@ class GoogleAuth {
 
   static bool _initialized = false;
 
-  static bool get isLinked =>
-      FirebaseAuth.instance.currentUser?.providerData
-          .any((p) => p.providerId == 'google.com') ??
-      false;
+  static bool get isLinked {
+    try {
+      return FirebaseAuth.instance.currentUser?.providerData
+              .any((p) => p.providerId == 'google.com') ??
+          false;
+    } catch (_) {
+      return false; // Firebase 미초기화(오프라인 등)
+    }
+  }
 
   static Future<void> _ensureInit() async {
     if (_initialized) return;
@@ -38,7 +43,7 @@ class GoogleAuth {
       final idToken = account.authentication.idToken;
       if (idToken == null) return const LinkFailed('Google ID 토큰을 받지 못했습니다.');
       final credential = GoogleAuthProvider.credential(idToken: idToken);
-      return firebaseLinkOrSignIn(credential, account.displayName);
+      return await firebaseLinkOrSignIn(credential, account.displayName);
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) {
         return const LinkCancelled();

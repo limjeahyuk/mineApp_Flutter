@@ -60,6 +60,27 @@ class MatchInfo {
   final String opponentTitle;
 }
 
+/// 봇/목 상대에게 붙일 임의 칭호(연출용). 일부는 미착용("").
+String randomBotTitle(Random rng) {
+  const titles = ['지뢰 입문자', '초급 졸업', '중급 사냥꾼', '스피드러너', '대전 새내기',
+      '연승가도', '황금손', '수집가', '', ''];
+  return titles[rng.nextInt(titles.length)];
+}
+
+/// RaceRule 표시 문구(Swift RaceRule.title/subtitle).
+extension RaceRuleTitle on RaceRule {
+  String get title => switch (this) {
+        RaceRule.speed => '스피드',
+        RaceRule.score => '지뢰 대결',
+        RaceRule.coop => '합동',
+      };
+  String get subtitle => switch (this) {
+        RaceRule.speed => '먼저 다 클리어하면 승',
+        RaceRule.score => '보드 끝났을 때 더 많이 찾으면 승',
+        RaceRule.coop => '둘이서 함께 모두 클리어',
+      };
+}
+
 /// 레이스 진입 방식 — 홈/메뉴에서 고른 모드. bot=오프라인 봇전.
 enum RaceModeKind { quick, host, join, bot }
 

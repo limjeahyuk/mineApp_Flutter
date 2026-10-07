@@ -1,20 +1,22 @@
 import 'package:flutter/material.dart';
 
+import '../core/board.dart';
+import '../core/haptics.dart';
 import '../core/local_store.dart';
 import '../core/theme.dart';
 import '../core/types.dart';
+import '../core/ui.dart';
 import '../game/board_widget.dart';
 import '../game/item_dock.dart';
-import '../progression/daily.dart';
+import '../progression/title.dart' show TitleBadge;
 import 'bot_match_service.dart';
 import 'firebase_match_service.dart';
+import 'match_widgets.dart';
 import 'multiplayer.dart';
 import 'race_controller.dart';
 
-/// 대전(레이스) 화면 — Swift MultiplayerView 이식. 매칭→카운트다운→레이스→결과.
-/// 레이스 상단바: X 닫기 · LED 타이머 · 깃발 토글. 진행바는 나(위)·상대(아래) + %.
-///
-/// ponytail: 자동깃발/레이더 도크, 자리비움 배너, 합동 모드는 미이식.
+/// 멀티플레이(레이스) 전체 화면 — Swift MultiplayerView 이식: 상대 검색 → 카운트다운 → 레이스 → 결과.
+/// 스피드·지뢰 대결·합동(공유 보드 협동) 공용. 자리비움 경고/항복, 아이템 도크 포함.
 class VersusScreen extends StatefulWidget {
   const VersusScreen({super.key, required this.mode});
   final RaceMode mode;
@@ -23,374 +25,337 @@ class VersusScreen extends StatefulWidget {
   State<VersusScreen> createState() => _VersusScreenState();
 }
 
-class _VersusScreenState extends State<VersusScreen> {
-  late final RaceController ctrl = RaceController(
+class _VersusScreenState extends State<VersusScreen>
+    with WidgetsBindingObserver {
+  late final RaceController vm = RaceController(
       widget.mode.kind == RaceModeKind.bot
           ? BotMatchService(rule: widget.mode.rule)
           : FirebaseMatchService(kind: 'mine'));
-  // 대전은 시작 시 첫 칸이 열려 있으므로 깃발 모드를 기본으로 둔다(원본과 동일).
+  // 대전은 시작 시 첫 칸이 이미 열려 있으므로 깃발 모드를 기본값으로 둔다.
   bool flagMode = true;
-  bool probing = false; // 자동깃발 발동 대기
-  bool _recorded = false; // 이번 판 전적 1회만 기록
+  bool boardZoomed = false;
+  bool probing = false;
+  RaceFlow _lastFlow = RaceFlow.searching;
+  Difficulty? _lastDiff;
+  bool _closed = false;
 
   @override
   void initState() {
     super.initState();
-    // 인벤토리 배선 — 매칭 후 startSeeded가 티켓을 계산하므로 그 전에 연결.
-    final inv = LocalStore.shared;
-    ctrl.game.autoFlagSupplier = () => inv.ownedFlags;
-    ctrl.game.onConsumeAutoFlag = inv.consumeFlag;
-    ctrl.game.radarSupplier = () => inv.ownedRadars;
-    ctrl.game.onConsumeRadar = inv.consumeRadar;
-    ctrl.game.onGoldenMineFound = () {
-      inv.addGoldenMines(1);
-      Daily.bump(DailyKind.golden);
-    };
-    ctrl.addListener(_maybeRecordResult);
-    ctrl.start(widget.mode);
-  }
-
-  // 대전 종료 시 전적 1회 기록.
-  void _maybeRecordResult() {
-    if (_recorded) return;
-    if (ctrl.flow != RaceFlow.finished || ctrl.result == null) return;
-    _recorded = true;
-    final inv = LocalStore.shared;
-    switch (ctrl.result!) {
-      case RaceResult.win:
-        inv.recordRaceWin();
-        Daily.bump(DailyKind.raceWins);
-      case RaceResult.lose:
-        inv.recordRaceLoss();
-      case RaceResult.draw:
-        inv.recordRaceDraw();
-    }
-  }
-
-  void _onProbe(int r, int c) {
-    ctrl.game.useAutoFlag(r, c);
-    setState(() => probing = false);
+    WidgetsBinding.instance.addObserver(this);
+    vm.addListener(_onVm);
+    final d = widget.mode.difficulty;
+    setAppOrientation(allowLandscape: d?.prefersLandscape ?? false);
+    vm.start(widget.mode);
   }
 
   @override
   void dispose() {
-    ctrl.leave();
-    ctrl.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    vm.removeListener(_onVm);
+    vm.leave();
+    vm.dispose();
+    setAppOrientation();
     super.dispose();
   }
 
-  Future<void> _exit() async {
-    if (mounted) Navigator.of(context).pop();
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 백그라운드(전화·알림)에 있던 시간은 자리비움으로 세지 않는다.
+    vm.setSceneActive(state == AppLifecycleState.resumed);
   }
+
+  void _onVm() {
+    if (vm.flow != _lastFlow) {
+      _lastFlow = vm.flow;
+      if (vm.flow != RaceFlow.racing) probing = false;
+    }
+    final d = vm.match?.difficulty;
+    if (d != null && d != _lastDiff) {
+      _lastDiff = d;
+      setAppOrientation(allowLandscape: d.prefersLandscape);
+    }
+    if (vm.shouldExit) _close();
+  }
+
+  void _close() {
+    if (_closed) return;
+    _closed = true;
+    Navigator.of(context).pop();
+  }
+
+  RaceRule? get _modeRule =>
+      widget.mode.kind == RaceModeKind.join ? null : widget.mode.rule;
+  bool get _isCoopLaunch => _modeRule == RaceRule.coop;
+  bool get _isCoop => vm.match?.rule == RaceRule.coop;
+  bool get _isScoreMode => vm.match?.rule == RaceRule.score;
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     return PopScope(
-      canPop: true,
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _close();
+      },
       child: Scaffold(
         backgroundColor: t.bg,
-        body: SafeArea(
-          child: ListenableBuilder(
-            listenable: ctrl,
-            builder: (_, _) {
-              if (ctrl.failure != null) return _failure(t, ctrl.failure!);
-              switch (ctrl.flow) {
-                case RaceFlow.searching:
-                  return _searching(t);
-                case RaceFlow.starting:
-                  return _countdown(t);
-                case RaceFlow.racing:
-                case RaceFlow.finished:
-                  return _race(t);
-              }
-            },
-          ),
+        body: ListenableBuilder(
+          listenable: vm,
+          builder: (context, _) {
+            final g = vm.game;
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                SafeArea(
+                  child: switch (vm.flow) {
+                    RaceFlow.searching => _searchingView(t),
+                    RaceFlow.starting => _startingView(),
+                    _ => _raceView(t),
+                  },
+                ),
+                if (vm.flow == RaceFlow.racing)
+                  SafeArea(
+                    child: Stack(children: [
+                      ItemDock(
+                        tickets: g.autoFlagTickets,
+                        isPlaying: g.state == GameState.playing,
+                        usesEdgeDrawer: g.difficulty == Difficulty.expert ||
+                            g.difficulty == Difficulty.ultimate,
+                        probing: probing,
+                        onProbingChanged: (v) => setState(() => probing = v),
+                        drawerBottomPadding:
+                            g.difficulty.prefersLandscape ? 40 : 96,
+                        radarTickets: g.radarTickets,
+                        onRadar: g.useRadar,
+                      ),
+                    ]),
+                  ),
+                if (vm.flow == RaceFlow.finished && vm.result != null)
+                  _resultOverlay(vm.result!),
+                if (vm.flow == RaceFlow.racing && vm.afkWarning)
+                  SafeArea(
+                    child: AfkWarningBanner(
+                        remaining: vm.afkRemaining, onStay: vm.stayActive),
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  // ── 상대 찾는 중 ──
-  Widget _searching(AppTheme t) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const CircularProgressIndicator(),
-          const SizedBox(height: 24),
-          Text(ctrl.rematching ? '재대결 대기 중…' : '상대를 찾는 중…',
-              style: TextStyle(
-                  color: t.text, fontSize: 18, fontWeight: FontWeight.w600)),
-          if (ctrl.roomCode != null) ...[
-            const SizedBox(height: 20),
-            Text('방 코드', style: TextStyle(color: t.textSecondary)),
-            const SizedBox(height: 6),
-            Text(ctrl.roomCode!,
-                style: TextStyle(
-                    color: t.text,
-                    fontSize: 34,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 6)),
-            const SizedBox(height: 6),
-            Text('친구에게 코드를 알려주세요',
-                style: TextStyle(color: t.textTertiary, fontSize: 13)),
-          ],
-          const SizedBox(height: 40),
-          TextButton(onPressed: _exit, child: const Text('취소')),
-        ],
-      ),
-    );
+  // MARK: 상대 검색 중
+
+  Widget _searchingView(AppTheme t) {
+    final failure = vm.failure;
+    if (failure != null) return MatchFailedView(error: failure, onClose: _close);
+    final Widget detail;
+    if (vm.rematching) {
+      detail = MatchDetailText(
+          _isCoop ? '같은 파트너와 다시 시작할게요' : '같은 상대와 다시 시작할게요');
+    } else if (widget.mode.kind == RaceModeKind.host) {
+      detail = RoomCodeBlock(
+        code: vm.roomCode,
+        shareText: (code) =>
+            '지뢰찾기 대전에 들어와요! 방 코드: $code\n${InviteLink.webURL('mine', code)}',
+      );
+    } else {
+      detail = MatchDetailText(
+          _isCoopLaunch ? '같은 보드를 둘이서 함께 푸는 협동' : '같은 보드로 동시에 겨루는 레이스');
+    }
+    return MatchSearchingView(
+        title: _searchingTitle, detail: detail, onCancel: _close);
   }
 
-  // ── 시작 카운트다운 ──
-  Widget _countdown(AppTheme t) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('상대를 만났어요!',
-              style: TextStyle(
-                  color: t.text, fontSize: 22, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(color: t.fill, shape: BoxShape.circle),
-            child: Icon(Icons.person, color: AppTheme.oppColor, size: 30),
-          ),
-          const SizedBox(height: 8),
-          if (ctrl.match != null)
-            Text(ctrl.match!.opponentName,
-                style: TextStyle(
-                    color: t.text, fontSize: 18, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 20),
-          Text('${ctrl.startCountdown}',
-              style: TextStyle(
-                  color: AppTheme.meColor,
-                  fontSize: 64,
-                  fontWeight: FontWeight.w900)),
-          const SizedBox(height: 8),
-          Text('잠시 후 시작합니다',
-              style: TextStyle(color: t.textSecondary, fontSize: 14)),
-        ],
-      ),
-    );
+  String get _searchingTitle {
+    if (vm.rematching) return _isCoop ? '파트너를 기다리는 중…' : '상대를 기다리는 중…';
+    switch (widget.mode.kind) {
+      case RaceModeKind.bot:
+        return _isCoopLaunch ? '봇 파트너와 준비 중…' : '봇과 매칭 중…';
+      case RaceModeKind.host:
+        return _isCoopLaunch ? '파트너 입장을 기다리는 중…' : '상대 입장을 기다리는 중…';
+      case RaceModeKind.join:
+        return '방에 입장 중…';
+      case RaceModeKind.quick:
+        return _isCoopLaunch ? '함께할 파트너를 찾는 중…' : '상대를 찾는 중…';
+    }
   }
 
-  // ── 레이스 + 결과 ──
-  Widget _race(AppTheme t) {
-    final g = ctrl.game;
-    final isScore = g.rule == RaceRule.score;
+  // MARK: 시작 카운트다운
+
+  Widget _startingView() => MatchStartingView(
+        headline: _isCoop ? '파트너를 만났어요!' : '상대를 만났어요!',
+        opponentName: vm.match?.opponentName ?? (_isCoop ? '파트너' : '상대'),
+        opponentTitle: vm.match?.opponentTitle ?? '',
+        countdown: vm.startCountdown,
+        footer: _isCoop ? '잠시 후 함께 시작합니다' : '잠시 후 시작합니다',
+        icon: _isCoop ? Icons.people : Icons.person,
+        iconColor: _isCoop ? kRaceCoop : kRaceOpp,
+        numberColor: _isCoop ? kRaceCoop : kRaceMe,
+      );
+
+  // MARK: 레이스
+
+  Widget _raceView(AppTheme t) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
       child: Column(
         children: [
-          _topBar(t),
-          const SizedBox(height: 8),
-          _progressRow(t, '나', ctrl.myBarProgress, AppTheme.meColor,
-              isScore ? ctrl.myScore : null),
-          const SizedBox(height: 6),
-          _progressRow(t, ctrl.match?.opponentName ?? '상대',
-              ctrl.opponentBarProgress, AppTheme.oppColor,
-              isScore ? ctrl.opponentScore : null),
-          const SizedBox(height: 8),
+          _raceTopBar(t),
+          const SizedBox(height: 10),
           Expanded(
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: BoardWidget(
-                    game: g,
-                    flagMode: flagMode,
-                    probing: probing,
-                    onProbe: _onProbe,
-                  ),
-                ),
-                if (ctrl.flow == RaceFlow.racing)
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: ItemDock(
-                      radarTickets: g.radarTickets,
-                      autoFlagTickets: g.autoFlagTickets,
-                      isPlaying: g.state == GameState.playing,
-                      probing: probing,
-                      onRadar: () => setState(() {
-                        g.useRadar();
-                      }),
-                      onToggleProbe: () => setState(() => probing = !probing),
-                    ),
-                  ),
-              ],
+            child: BoardWidget(
+              game: vm.game,
+              flagMode: flagMode,
+              zoomedIn: boardZoomed,
+              onZoomChanged: (z) => setState(() => boardZoomed = z),
+              probing: probing,
+              onProbe: _handleProbe,
             ),
           ),
-          if (ctrl.flow == RaceFlow.finished) _resultBanner(t),
         ],
       ),
     );
   }
 
-  // 상단바: X 닫기 · LED 타이머 · 깃발 토글
-  Widget _topBar(AppTheme t) {
-    return Row(
+  void _handleProbe(int r, int c) {
+    final used = vm.game.useAutoFlag(r, c);
+    setState(() => probing = false);
+    if (used) {
+      Haptics.success();
+    } else {
+      Haptics.tap();
+    }
+  }
+
+  Widget _raceTopBar(AppTheme t) {
+    final e = vm.game.elapsed.clamp(0, 999);
+    return Column(
       children: [
-        _iconButton(t, Icons.close, _exit),
-        const Spacer(),
-        _led(ctrl.game.elapsed),
-        const Spacer(),
-        _iconButton(
-          t,
-          flagMode ? Icons.flag : Icons.flag_outlined,
-          () => setState(() => flagMode = !flagMode),
-          highlighted: flagMode,
-        ),
-      ],
-    );
-  }
-
-  Widget _iconButton(AppTheme t, IconData icon, VoidCallback onTap,
-      {bool highlighted = false}) {
-    return Material(
-      color: highlighted ? AppTheme.soloAccent : t.fill,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: onTap,
-        child: SizedBox(
-          width: 44,
-          height: 40,
-          child: Icon(icon,
-              color: highlighted ? Colors.white : t.text, size: 22),
-        ),
-      ),
-    );
-  }
-
-  Widget _led(int value) {
-    final v = value.clamp(0, 999).toString().padLeft(3, '0');
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-          color: Colors.black, borderRadius: BorderRadius.circular(6)),
-      child: Text(v,
-          style: const TextStyle(
-            color: Color(0xFFFF3B30),
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            fontFeatures: [FontFeature.tabularFigures()],
-            letterSpacing: 2,
-          )),
-    );
-  }
-
-  Widget _progressRow(
-      AppTheme t, String name, double progress, Color color, int? score) {
-    final p = progress.clamp(0.0, 1.0);
-    return Row(
-      children: [
-        SizedBox(
-          width: 80,
-          child: Text(name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  color: t.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600)),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: p,
-              minHeight: 10,
-              backgroundColor: t.fill,
-              valueColor: AlwaysStoppedAnimation(color),
+        Row(
+          children: [
+            CircleIconButton(icon: Icons.close, onTap: _close),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                  color: Colors.black, borderRadius: BorderRadius.circular(6)),
+              child: Text(e.toString().padLeft(3, '0'),
+                  style: const TextStyle(
+                      color: AppTheme.ledRed,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Menlo',
+                      fontFamilyFallback: ['Courier', 'monospace'],
+                      fontFeatures: [FontFeature.tabularFigures()])),
             ),
-          ),
+            const Spacer(),
+            CircleFlagToggle(
+                on: flagMode, onTap: () => setState(() => flagMode = !flagMode)),
+          ],
         ),
-        const SizedBox(width: 8),
-        SizedBox(
-          width: 40,
-          child: Text('${(p * 100).round()}%',
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                  color: color, fontSize: 13, fontWeight: FontWeight.bold)),
-        ),
-        if (score != null)
-          SizedBox(
-            width: 30,
-            child: Text('$score',
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                    color: color, fontSize: 14, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        if (_isCoop) ...[
+          // 합동: 한 보드를 공유하므로 진행바는 하나(공동 진행도) + 파트너 표시.
+          RaceProgressRow(
+              label: '함께', value: vm.myBarProgress, color: kRaceCoop),
+          const SizedBox(height: 8),
+          Row(children: [
+            const Icon(Icons.people, size: 13, color: kRaceCoop),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text('${vm.match?.opponentName ?? '파트너'}와 함께 푸는 중',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: t.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500)),
+            ),
+            const SizedBox(width: 6),
+            TitleBadge(name: vm.match?.opponentTitle ?? '', size: 8),
+          ]),
+        ] else ...[
+          RaceProgressRow(
+            label: '나',
+            title: LocalStore.shared.equippedTitleName,
+            value: vm.myBarProgress,
+            color: kRaceMe,
+            score: _isScoreMode ? vm.myScore : null,
           ),
+          const SizedBox(height: 8),
+          RaceProgressRow(
+            label: vm.match?.opponentName ?? '상대',
+            title: vm.match?.opponentTitle ?? '',
+            value: vm.opponentBarProgress,
+            color: kRaceOpp,
+            score: _isScoreMode ? vm.opponentScore : null,
+          ),
+        ],
       ],
     );
   }
 
-  Widget _resultBanner(AppTheme t) {
-    final r = ctrl.result!;
-    final (label, color) = switch (r) {
-      RaceResult.win => (ctrl.opponentLeft ? '부전승! 🎉' : '승리! 🎉',
-          const Color(0xFF1A801F)),
-      RaceResult.lose => ('패배 💥', const Color(0xFFCC0D0D)),
-      RaceResult.draw => ('무승부 🤝', t.textSecondary),
+  // MARK: 결과
+
+  String _resultSubtitle(RaceResult r) {
+    if (_isCoop) {
+      if (vm.opponentLeft) return '파트너가 나가서 게임이 끝났어요';
+      return r == RaceResult.win ? '둘이서 보드를 모두 풀었어요!' : '지뢰를 밟아 함께 실패했어요';
+    }
+    if (vm.opponentLeft) return '상대가 나가서 승리했어요';
+    if (_isScoreMode) {
+      final me = vm.myScore, opp = vm.opponentScore;
+      return switch (r) {
+        RaceResult.win => '지뢰를 더 많이 찾았어요 ($me : $opp)',
+        RaceResult.lose => '상대가 더 많이 찾았어요 ($me : $opp)',
+        RaceResult.draw => '같은 수를 찾았어요 ($me : $opp)',
+      };
+    }
+    return r == RaceResult.win ? '상대보다 먼저 클리어했어요' : '상대가 먼저 끝냈어요';
+  }
+
+  String _resultEmoji(RaceResult r) {
+    if (_isCoop) {
+      if (vm.opponentLeft) return '👋';
+      return r == RaceResult.win ? '🎉' : '💥';
+    }
+    return switch (r) {
+      RaceResult.win => '🏆',
+      RaceResult.lose => '💥',
+      RaceResult.draw => '🤝',
     };
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
-      child: Column(
-        children: [
-          Text(label,
-              style: TextStyle(
-                  color: color, fontSize: 26, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _exit,
-                  style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14)),
-                  child: const Text('나가기'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: () => setState(() {
-                    flagMode = true;
-                    _recorded = false;
-                    ctrl.rematch();
-                  }),
-                  style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.multiAccent,
-                      padding: const EdgeInsets.symmetric(vertical: 14)),
-                  child: const Text('다시하기'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
   }
 
-  Widget _failure(AppTheme t, MatchError e) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.error_outline, size: 56, color: t.textSecondary),
-          const SizedBox(height: 16),
-          Text(e.message,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: t.text, fontSize: 16)),
-          const SizedBox(height: 28),
-          FilledButton(onPressed: _exit, child: const Text('나가기')),
-        ],
-      ),
-    );
+  String _resultTitle(RaceResult r) {
+    if (_isCoop) {
+      if (vm.opponentLeft) return '게임 종료';
+      return r == RaceResult.win ? '함께 클리어!' : '함께 실패';
+    }
+    return switch (r) {
+      RaceResult.win => '승리!',
+      RaceResult.lose => '패배',
+      RaceResult.draw => '무승부',
+    };
   }
+
+  Widget _resultOverlay(RaceResult r) => ResultOverlay(
+        emoji: _resultEmoji(r),
+        title: _resultTitle(r),
+        subtitle: _resultSubtitle(r),
+        children: [
+          FilledWideButton(
+            label: _isCoop ? '다시 하기' : '다시 매칭',
+            onTap: () {
+              setState(() {
+                flagMode = true;
+                boardZoomed = false;
+              });
+              vm.rematch();
+            },
+          ),
+          TextLinkButton(label: '나가기', onTap: _close),
+        ],
+      );
 }

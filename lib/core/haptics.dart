@@ -17,7 +17,7 @@ class Haptics {
     } catch (_) {}
   }
 
-  static void tap() => _safe(HapticFeedback.selectionClick);
+  static void tap() => _safe(HapticFeedback.lightImpact);
   static void flagTap() {
     if (!isFlagEnabled) return;
     try {
@@ -25,6 +25,7 @@ class Haptics {
     } catch (_) {}
   }
 
+  // UINotificationFeedbackGenerator(success/warning/error) 근사.
   static void success() => _safe(HapticFeedback.mediumImpact);
   static void warning() => _safe(HapticFeedback.mediumImpact);
   static void error() => _safe(HapticFeedback.heavyImpact);

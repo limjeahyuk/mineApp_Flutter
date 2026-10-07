@@ -1,13 +1,13 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/local_store.dart';
 import '../core/theme.dart';
+import '../core/ui.dart';
 import 'notice.dart';
 
 /// 공지사항 화면 — Swift NoticeListView 이식. 고정 공지가 위로, 나머지는 최신순.
 /// 열면 가장 새 공지 시각을 읽음으로 저장해 홈 종(bell)의 점을 끈다.
-///
-/// ponytail: 콜드런치 팝업(NoticePopupView)·"오늘은 그만 보기"는 미이식(목록만).
 class NoticeScreen extends StatefulWidget {
   const NoticeScreen({super.key});
 
@@ -45,50 +45,13 @@ class _NoticeScreenState extends State<NoticeScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    return Scaffold(
-      backgroundColor: t.surface,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _header(t),
-            Expanded(child: _content(t)),
-          ],
-        ),
-      ),
-    );
+    return SheetScaffold(title: '공지사항', child: _content(t));
   }
-
-  Widget _header(AppTheme t) => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 16, 0),
-        child: Row(
-          children: [
-            Material(
-              color: t.fill,
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: () => Navigator.of(context).pop(),
-                child: SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: Icon(Icons.close, color: t.textSecondary, size: 20)),
-              ),
-            ),
-            Expanded(
-              child: Text('공지사항',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: t.text, fontSize: 20, fontWeight: FontWeight.w800)),
-            ),
-            const SizedBox(width: 40),
-          ],
-        ),
-      );
 
   Widget _content(AppTheme t) {
     final notices = _notices;
     if (notices == null) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(child: CupertinoActivityIndicator(color: t.textSecondary));
     }
     if (notices.isEmpty) return _emptyState(t);
     return ListView.separated(

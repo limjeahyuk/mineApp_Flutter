@@ -76,9 +76,18 @@ class CoinsAtLeastGoal extends Goal {
   final int n;
 }
 
-/// 협동/테마 등 미이식 스탯에 기대는 목표(항상 진행 0으로 잠김).
-class UnportedGoal extends Goal {
-  const UnportedGoal(this.n);
+class TouchClearsGoal extends Goal {
+  const TouchClearsGoal(this.n);
+  final int n;
+}
+
+class TouchUnderGoal extends Goal {
+  const TouchUnderGoal(this.sec);
+  final int sec;
+}
+
+class ThemesOwnedGoal extends Goal {
+  const ThemesOwnedGoal(this.n);
   final int n;
 }
 
@@ -154,18 +163,18 @@ class Title {
         TitleSource.achievement(WinStreakGoal(5)), '대전 5연승'),
     Title('duelist', '승부사', TitleRarity.epic,
         TitleSource.achievement(RaceWinsGoal(50)), '대전에서 50승'),
-    // 협동형(미이식 — 잠김)
+    // 협동형
     Title('soulmate', '환상의 짝꿍', TitleRarity.rare,
-        TitleSource.achievement(UnportedGoal(10)), "'너에게 닿기를' 10회 성공"),
+        TitleSource.achievement(TouchClearsGoal(10)), '‘너에게 닿기를’ 10회 성공'),
     Title('telepathy', '텔레파시', TitleRarity.epic,
-        TitleSource.achievement(UnportedGoal(30)), "'너에게 닿기를' 30초 이내 성공"),
+        TitleSource.achievement(TouchUnderGoal(30)), '‘너에게 닿기를’ 30초 이내 성공'),
     // 경제/뽑기형
     Title('golden_hand', '황금손', TitleRarity.rare,
         TitleSource.achievement(GoldenMinesGoal(100)), '황금지뢰 100개 발견'),
     Title('gacha_addict', '뽑기 중독', TitleRarity.rare,
         TitleSource.achievement(DrawsGoal(100)), '뽑기 100회'),
     Title('collector', '수집가', TitleRarity.rare,
-        TitleSource.achievement(UnportedGoal(3)), '색상 테마 3개 보유'),
+        TitleSource.achievement(ThemesOwnedGoal(3)), '색상 테마 3개 보유'),
     // 히든
     Title('jackpot', '잭팟 주인공', TitleRarity.legendary,
         TitleSource.achievement(JackpotGoal(1)), 'x3 뽑기에서 잭팟 터뜨리기',
@@ -181,6 +190,20 @@ class Title {
     Title('vip', 'VIP', TitleRarity.legendary, TitleSource.purchase(5000),
         '상점에서 코인으로 구매'),
   ];
+
+  bool get isStarter => source.kind == TitleSourceKind.starter;
+
+  /// 처음부터 보유하는 칭호 id 집합.
+  static Set<String> get starterIds =>
+      {for (final t in all) if (t.isStarter) t.id};
+
+  /// 표시 이름으로 칭호를 찾는다(랭킹/멀티는 이름만 주고받으므로 희귀도 색 복원용).
+  static Title? byName(String name) {
+    for (final t in all) {
+      if (t.name == name) return t;
+    }
+    return null;
+  }
 
   static Title? byId(String id) {
     for (final t in all) {
@@ -235,22 +258,79 @@ class Title {
     case CoinsAtLeastGoal(:final n):
       final c = s.coins;
       return (current: c.clamp(0, n), target: n, done: c >= n);
-    case UnportedGoal(:final n):
-      return (current: 0, target: n, done: false);
+    case TouchClearsGoal(:final n):
+      final c = s.touchClears;
+      return (current: c.clamp(0, n), target: n, done: c >= n);
+    case TouchUnderGoal(:final sec):
+      final best = s.touchBest;
+      final done = best != null && best <= sec;
+      return (current: done ? sec : 0, target: sec, done: done);
+    case ThemesOwnedGoal(:final n):
+      final c = s.ownedThemeIds.length;
+      return (current: c.clamp(0, n), target: n, done: c >= n);
   }
 }
 
-/// 달성한 업적 칭호를 해금한다. 새로 해금된 칭호 목록 반환.
-List<Title> refreshAchievements() {
+/// 업적 진행도 표시 문구(업적탭용). 카운트형은 "3 / 10", 시간형은 최고기록/목표.
+String goalDisplay(Goal g) {
   final s = LocalStore.shared;
-  final newly = <Title>[];
-  for (final t in Title.achievements) {
-    final goal = t.source.goal;
-    if (goal == null) continue;
-    if (goalProgress(goal).done && !s.isTitleOwned(t.id)) {
-      s.unlockTitle(t.id);
-      newly.add(t);
-    }
+  switch (g) {
+    case BestUnderGoal(:final d, :final sec):
+      final best = s.soloBest(d);
+      return best != null ? '최고 $best초 · 목표 $sec초 이내' : '기록 없음 · 목표 $sec초 이내';
+    case TouchUnderGoal(:final sec):
+      final best = s.touchBest;
+      return best != null ? '최고 $best초 · 목표 $sec초 이내' : '기록 없음 · 목표 $sec초 이내';
+    default:
+      final p = goalProgress(g);
+      return '${p.current} / ${p.target}';
   }
-  return newly;
+}
+
+/// 달성한 업적 칭호를 해금한다. 새로 해금된 칭호 목록 반환(LocalStore에 위임).
+List<Title> refreshAchievements({bool announce = true}) =>
+    LocalStore.shared.refreshAchievements(announce: announce);
+
+/// 닉네임 아래에 작게 붙는 칭호 배지 — Swift `TitleBadgeView`. 멀티·랭킹·프로필·업적탭 공용.
+/// `name`이 비어 있으면(미착용) 아무것도 그리지 않는다. 희귀도 색은 카탈로그에서 이름으로 복원한다.
+class TitleBadge extends StatelessWidget {
+  const TitleBadge({super.key, required this.name, this.size = 10});
+  final String name;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    if (name.isEmpty) return const SizedBox.shrink();
+    final rarity = Title.byName(name)?.rarity ?? TitleRarity.common;
+    final c = rarity.color;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: size * 0.8, vertical: size * 0.3),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [c.withValues(alpha: 0.24), c.withValues(alpha: 0.10)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: c.withValues(alpha: 0.45), width: 0.8),
+        boxShadow: rarity == TitleRarity.legendary
+            ? [BoxShadow(color: c.withValues(alpha: 0.40), blurRadius: 4, offset: const Offset(0, 1))]
+            : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(rarity.icon, size: size, color: c),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: c, fontSize: size, fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+  }
 }

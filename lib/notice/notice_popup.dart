@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/local_store.dart';
 import '../core/theme.dart';
+import '../core/ui.dart';
 import 'notice.dart';
 
 /// 콜드런치 공지 팝업 — Swift NoticePopupView 이식.
@@ -94,7 +95,7 @@ class _NoticePopup extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: InkWell(
+                    child: PlainButton(
                       onTap: () {
                         LocalStore.shared.dismissNoticeForToday(notice.id);
                         Navigator.of(context).pop();
@@ -113,7 +114,7 @@ class _NoticePopup extends StatelessWidget {
                   ),
                   Container(width: 1, height: 28, color: t.border.withValues(alpha: 0.4)),
                   Expanded(
-                    child: InkWell(
+                    child: PlainButton(
                       onTap: () => Navigator.of(context).pop(),
                       child: const SizedBox(
                         height: 50,

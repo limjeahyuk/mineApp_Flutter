@@ -17,16 +17,18 @@ void main() {
     // 초급 졸업(초급 10회) — 아직 미달
     expect(s.isTitleOwned('grad_beginner'), isFalse);
 
+    // 클리어 기록 시점에 자동으로 업적이 재평가되고 축하 배너 후보가 생긴다(Swift와 동일).
     for (var i = 0; i < 10; i++) {
       s.recordSolo(Difficulty.beginner, 30);
     }
-    final newly = refreshAchievements();
-    expect(newly.map((t) => t.id), contains('grad_beginner'));
     expect(s.isTitleOwned('grad_beginner'), isTrue);
+    expect(s.pendingUnlockToast.value, isNotNull);
+    // 미착용 상태였으므로 첫 해금 칭호가 자동 장착된다.
+    expect(s.equippedTitleId, isNotNull);
+    expect(refreshAchievements(), isEmpty); // 이미 해금됨
 
     // 대전 1승 → 대전 새내기
     s.recordRaceWin();
-    refreshAchievements();
     expect(s.isTitleOwned('race_rookie'), isTrue);
   });
 
@@ -56,10 +58,9 @@ void main() {
     expect(supporter.purchaseCost, 1000);
     expect(s.isTitleOwned('supporter'), isFalse);
 
-    expect(s.spendCoins(supporter.purchaseCost!), isTrue);
-    s.unlockTitle('supporter');
-    s.equipTitle('supporter', supporter.name);
+    expect(s.purchaseTitle('supporter'), isTrue);
     expect(s.coins, 200);
+    expect(s.purchaseTitle('supporter'), isFalse); // 이미 보유
     expect(s.isTitleOwned('supporter'), isTrue);
     expect(s.equippedTitleId, 'supporter');
     expect(s.equippedTitleName, '후원자');

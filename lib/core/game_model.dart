@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import 'board.dart';
+import 'local_store.dart';
 import 'seeded_random.dart';
 import 'types.dart';
 
@@ -60,9 +61,8 @@ const List<List<int>> _offsets = [
   [1, -1], [1, 0], [1, 1],
 ];
 
-/// 최고 기록 저장소. Swift는 UserDefaults를 썼다.
-/// ponytail: UI 단계에서 shared_preferences로 교체. 지금은 인메모리라 앱 재시작 시 사라짐.
-final Map<String, int> _bestTimes = {};
+/// 최고 기록 저장소 — LocalStore(shared_preferences). 초기화 전(테스트)이면 인메모리.
+final Map<String, int> _memBestTimes = {};
 
 class GameModel extends ChangeNotifier {
   List<List<Cell>> grid = [];
@@ -723,18 +723,103 @@ class GameModel extends ChangeNotifier {
   }
 
   int? bestTime(String code) {
-    final v = _bestTimes[_bestKey(code)];
+    final store = LocalStore.maybeShared;
+    if (store != null) return store.bestTimeForCode(code);
+    final v = _memBestTimes[code];
     return (v != null && v > 0) ? v : null;
   }
-
-  static String _bestKey(String code) => 'best_$code';
 
   void _recordWin() {
     final code = boardCode;
     if (code == null) return;
-    final key = _bestKey(code);
-    final prev = _bestTimes[key] ?? 0;
-    if (prev == 0 || elapsed < prev) _bestTimes[key] = elapsed;
+    final store = LocalStore.maybeShared;
+    if (store != null) {
+      store.recordCodeBest(code, elapsed);
+      return;
+    }
+    final prev = _memBestTimes[code] ?? 0;
+    if (prev == 0 || elapsed < prev) _memBestTimes[code] = elapsed;
+  }
+
+  // MARK: - 이어하기 (앱 종료/백그라운드 후 솔로 판 복원)
+
+  /// 진행 중인 솔로 판을 저장용 스냅샷(JSON 맵)으로. 솔로 + 스피드 + 진행 중일 때만.
+  Map<String, Object>? makeResumeSnapshot() {
+    if (!_isSolo || rule != RaceRule.speed || shared) return null;
+    if (state != GameState.playing || seed == null) return null;
+    return {
+      'difficulty': difficulty.label,
+      'seed': seed!,
+      'elapsed': elapsed,
+      'didContinue': _didContinue,
+      'usedItem': usedAutoFlagThisGame,
+      'cells': [
+        for (final row in grid)
+          for (final c in row)
+            [
+              c.isMine ? 1 : 0,
+              c.isRevealed ? 1 : 0,
+              c.isFlagged ? 1 : 0,
+              c.exploded ? 1 : 0,
+              c.adjacent,
+              c.isGolden ? 1 : 0,
+            ],
+      ],
+    };
+  }
+
+  /// 저장된 스냅샷으로 솔로 판을 그대로 복원하고 즉시 이어서 진행한다(.playing + 타이머).
+  /// 데이터가 깨졌으면(난이도/칸 수 불일치) 새 판으로 시작한다.
+  void restore(Map<String, dynamic> s) {
+    final diff = Difficulty.fromLabel((s['difficulty'] as String?) ?? '');
+    final cells = s['cells'] as List?;
+    if (diff == null || cells == null || cells.length != diff.rows * diff.cols) {
+      newGame();
+      return;
+    }
+    _stopTimer();
+    _isReconfiguring = true;
+    difficulty = diff;
+    _isReconfiguring = false;
+    _isSolo = true;
+    rule = RaceRule.speed;
+    shared = false;
+    seed = (s['seed'] as num).toInt();
+    elapsed = (s['elapsed'] as num?)?.toInt() ?? 0;
+    _minesPlaced = true;
+    _resetReviveState();
+    _didContinue = s['didContinue'] as bool? ?? false;
+    usedAutoFlagThisGame = s['usedItem'] as bool? ?? true;
+    autoFlagTickets = min(autoFlagSupplier(), soloAutoFlagCap(difficulty));
+    radarTickets = min(radarSupplier(), difficulty.radarCap);
+    soloWinResult = null;
+    final c = diff.cols;
+    grid = [
+      for (var r = 0; r < diff.rows; r++)
+        [
+          for (var col = 0; col < c; col++)
+            () {
+              final d = (cells[r * c + col] as List)
+                  .map((e) => (e as num).toInt())
+                  .toList();
+              return Cell(r * c + col)
+                ..isMine = d[0] == 1
+                ..isRevealed = d[1] == 1
+                ..isFlagged = d[2] == 1
+                ..exploded = d[3] == 1
+                ..adjacent = d[4]
+                ..isGolden = d.length > 5 && d[5] == 1;
+            }(),
+        ],
+    ];
+    for (final row in grid) {
+      for (final cell in row) {
+        if (cell.isGolden && cell.isFlagged) _goldenAwarded.add(cell.id);
+      }
+    }
+    state = GameState.playing;
+    _startTimer();
+    notifyListeners();
   }
 
   // MARK: - 타이머

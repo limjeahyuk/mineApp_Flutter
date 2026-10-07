@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import '../core/auth_service.dart';
+import '../core/ui.dart' show formatNumber;
 
 /// 운영 선물 한 건 — Firestore `mailGifts` 문서 1:1. Swift MailGift 이식.
 /// 작성은 콘솔(어드민), 앱은 읽기만 + "받기"로 로컬 지급.
@@ -38,7 +39,7 @@ class MailGift {
   /// "🪙 500 · 🚩 3" 요약(0인 항목 생략).
   String get rewardSummary {
     final parts = <String>[];
-    if (coins > 0) parts.add('🪙 $coins');
+    if (coins > 0) parts.add('🪙 ${formatNumber(coins)}');
     if (flags > 0) parts.add('🚩 $flags');
     if (megaphones > 0) parts.add('📢 $megaphones');
     if (radars > 0) parts.add('📡 $radars');

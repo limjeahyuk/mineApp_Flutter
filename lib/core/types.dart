@@ -30,7 +30,7 @@ class SharedBoardState {
 /// 가챠 아이템 — 한 판 상한(perGameCap) + 상점 표시용 메타.
 enum GachaItem {
   flag(3, '자동깃발', '🚩', '숫자칸 주변 지뢰에 자동으로 깃발을 꽂아요'),
-  megaphone(2, '확성기', '📣', "내 위치를 파트너에게 알려요 · '너에게 닿기를' 전용"),
+  megaphone(2, '확성기', '📣', '내 위치를 파트너에게 알려요 · ‘너에게 닿기를’ 전용'),
   radar(3, '레이더', '📡', '남은 숫자칸을 랜덤으로 3칸 열어요 · 솔로·대전 전용');
 
   const GachaItem(this.perGameCap, this.itemName, this.emoji, this.blurb);

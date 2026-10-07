@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/haptics.dart';
 import '../core/theme.dart';
+import '../core/ui.dart';
 
 /// 가이드 화면 — Swift TutorialView 이식. 상단 탭 3개:
 /// 튜토리얼(기초 조작·화면 버튼) / 공략(자주 나오는 패턴) / 멀티(대전·협동 규칙).
@@ -38,56 +39,26 @@ class _GuideScreenState extends State<GuideScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    return Scaffold(
-      backgroundColor: t.surface,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _header(t),
-            _tabBar(t),
-            Expanded(
-              child: PageView(
-                controller: _page,
-                onPageChanged: (i) => setState(() => _tab = i),
-                children: [
-                  _tabPage(_basicsTab(t)),
-                  _tabPage(_patternsTab(t)),
-                  _tabPage(_multiTab(t)),
-                ],
-              ),
+    return SheetScaffold(
+      title: '가이드',
+      child: Column(
+        children: [
+          _tabBar(t),
+          Expanded(
+            child: PageView(
+              controller: _page,
+              onPageChanged: (i) => setState(() => _tab = i),
+              children: [
+                _tabPage(_basicsTab(t)),
+                _tabPage(_patternsTab(t)),
+                _tabPage(_multiTab(t)),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
-
-  Widget _header(AppTheme t) => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 16, 0),
-        child: Row(
-          children: [
-            Material(
-              color: t.fill,
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: () => Navigator.of(context).pop(),
-                child: SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: Icon(Icons.close, color: t.textSecondary, size: 20)),
-              ),
-            ),
-            Expanded(
-              child: Text('가이드',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: t.text, fontSize: 20, fontWeight: FontWeight.w800)),
-            ),
-            const SizedBox(width: 40),
-          ],
-        ),
-      );
 
   Widget _tabBar(AppTheme t) => Padding(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
@@ -96,7 +67,7 @@ class _GuideScreenState extends State<GuideScreen> {
             for (var i = 0; i < _tabs.length; i++) ...[
               if (i > 0) const SizedBox(width: 8),
               Expanded(
-                child: GestureDetector(
+                child: PlainButton(
                   onTap: () => _goTab(i),
                   child: Container(
                     height: 42,
