@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:mine_app/core/board.dart';
 import 'package:mine_app/core/game_model.dart';
 import 'package:mine_app/core/local_store.dart';
 import 'package:mine_app/core/types.dart';
