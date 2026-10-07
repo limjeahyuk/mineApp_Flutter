@@ -14,32 +14,6 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
-<<<<<<< HEAD
-=======
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<!-- Google 로그인 콜백: GoogleService-Info의 REVERSED_CLIENT_ID(iOS 클라이언트 역순). -->
-				<string>com.googleusercontent.apps.470995040821-9b5mt4bfebc47ippul9240q0fo7p31co</string>
-			</array>
-		</dict>
-		<dict>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>CFBundleURLName</key>
-			<string>invite</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<!-- 방 초대 딥링크: mineapp://join?g=mine|treasure|touch&c=코드 -->
-				<string>mineapp</string>
-			</array>
-		</dict>
-	</array>
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
 	<key>CFBundleName</key>
 	<string>mine_app</string>
 	<key>CFBundlePackageType</key>

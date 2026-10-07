@@ -1,30 +1,10 @@
 import 'dart:math';
 
-<<<<<<< HEAD
-import 'package:flutter/cupertino.dart';
-=======
 import 'package:flutter/gestures.dart';
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
 import '../core/types.dart';
-<<<<<<< HEAD
-import 'board_fx.dart';
-import 'cell_painter.dart';
-import 'touch_model.dart';
-
-/// 확성기 핑 — mine=true면 내가 울린 확인, false면 파트너가 울린 방향 화살표.
-class TouchPing {
-  TouchPing(this.id, this.r, this.c, {this.mine = false});
-  final int id;
-  final int r, c;
-  final bool mine;
-}
-
-/// "너에게 닿기를" 보드 — Swift TouchBoardView 이식. 안개(내가 연 칸 기준 3칸)만 보이고,
-/// 처음엔 내 시작점이 화면 중앙에 오도록 한 번 맞춘다. 복기(`reveal`)면 안개를 걷고 만난 지점으로.
-=======
 import 'coop_controller.dart';
 import 'touch_model.dart';
 
@@ -33,7 +13,6 @@ import 'touch_model.dart';
 /// 안개 안에 들어오면 보여서 "근처에 누가 왔다"를 알아챌 수 있다.
 /// 30pt 고정 셀(가로·세로 스크롤). 처음에 내 시작점이 화면 중앙에 오도록 스크롤한다.
 /// 80×80(6,400칸)이라 셀 위젯 대신 한 장의 CustomPaint로 그리고, 탭 위치로 칸을 계산한다.
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
 class TouchBoard extends StatefulWidget {
   const TouchBoard({
     super.key,
@@ -44,43 +23,20 @@ class TouchBoard extends StatefulWidget {
     this.onProbe,
     this.reveal = false,
   });
-<<<<<<< HEAD
-=======
 
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
   final TouchModel game;
   final bool flagMode;
   final List<TouchPing> pings;
   final bool probing;
   final void Function(int r, int c)? onProbe;
-<<<<<<< HEAD
-=======
 
   /// 복기 모드 — 안개를 모두 걷어 두 사람이 연 길과 만난 지점을 보여준다.
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
   final bool reveal;
 
   @override
   State<TouchBoard> createState() => _TouchBoardState();
 }
 
-<<<<<<< HEAD
-class _TouchBoardState extends State<TouchBoard> with SingleTickerProviderStateMixin {
-  final _tc = TransformationController();
-  final _glyphs = GlyphCache();
-  late final AnimationController _anim = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 400))
-    ..addListener(() {
-      final tw = _tween;
-      if (tw != null) _tc.value = tw.evaluate(_anim);
-    });
-  Matrix4Tween? _tween;
-  Size _viewport = Size.zero;
-  int? _centeredSeed; // 판마다 한 번 시작점 중앙 정렬(이후엔 사용자 스크롤 존중)
-
-  TouchModel get g => widget.game;
-  BigBoardMetrics get _m => BigBoardMetrics(g.size);
-=======
 class _TouchBoardState extends State<TouchBoard>
     with SingleTickerProviderStateMixin {
   static const cell = 30.0;
@@ -106,56 +62,18 @@ class _TouchBoardState extends State<TouchBoard>
     game.addListener(_onGame);
     WidgetsBinding.instance.addPostFrameCallback((_) => _centerStart());
   }
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
 
   @override
   void didUpdateWidget(covariant TouchBoard old) {
     super.didUpdateWidget(old);
     if (widget.reveal && !old.reveal) {
-<<<<<<< HEAD
-      final t = g.meetPoint ?? g.myStart;
-      _tween = Matrix4Tween(begin: _tc.value.clone(), end: centerOn(_m, _viewport, t.$1, t.$2));
-      _anim.forward(from: 0);
-=======
       final t = game.meetPoint ?? game.myStart;
       _centerCamera(t.$1, t.$2, animated: true);
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
     }
   }
 
   @override
   void dispose() {
-<<<<<<< HEAD
-    _anim.dispose();
-    _tc.dispose();
-    super.dispose();
-  }
-
-  void _tap(int r, int c) {
-    final vis = widget.reveal || g.isVisible(r, c);
-    if (!vis) return; // 구름 너머는 만질 수 없다
-    final d = g.grid[r][c];
-    if (widget.probing) {
-      widget.onProbe?.call(r, c);
-    } else if (d.isRevealed) {
-      g.chord(r, c);
-    } else if (widget.flagMode) {
-      g.toggleFlag(r, c);
-    } else {
-      g.tap(r, c);
-    }
-  }
-
-  void _long(int r, int c) {
-    final vis = widget.reveal || g.isVisible(r, c);
-    if (!vis || widget.probing || g.grid[r][c].isRevealed) return;
-    widget.flagMode ? g.tap(r, c) : g.toggleFlag(r, c);
-  }
-
-  /// 내 시작점에서 핑 쪽을 향하는 각도(화면 위=0, 시계방향).
-  double _heading(TouchPing p) =>
-      atan2((p.c - g.myStart.$2).toDouble(), -(p.r - g.myStart.$1).toDouble());
-=======
     game.removeListener(_onGame);
     _h.dispose();
     _v.dispose();
@@ -250,80 +168,10 @@ class _TouchBoardState extends State<TouchBoard>
       game.toggleFlag(r, c);
     }
   }
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-<<<<<<< HEAD
-    final m = _m;
-    return LayoutBuilder(builder: (context, box) {
-      _viewport = box.biggest;
-      if (_centeredSeed != g.seed && box.maxWidth > 0) {
-        _centeredSeed = g.seed;
-        final target = centerOn(m, _viewport, g.myStart.$1, g.myStart.$2);
-        WidgetsBinding.instance.addPostFrameCallback((_) => _tc.value = target);
-      }
-      return Shake(
-        trigger: g.minesHit,
-        child: Stack(children: [
-          BigBoardViewport(
-            metrics: m,
-            controller: _tc,
-            background: t.boardFrame,
-            painter: _TouchPainter(g, widget.reveal, t, _glyphs, m),
-            onTap: _tap,
-            onLongPress: _long,
-            overlay: [
-              for (final b in g.blasts)
-                atCell(m, b.r, b.c, 30 * 2.6, BlastEffect(key: ValueKey(b.id), cell: 30)),
-              if (widget.reveal && g.meetPoint != null)
-                atCell(m, g.meetPoint!.$1, g.meetPoint!.$2, 30 * 2.6,
-                    const MeetMarker(cell: 30)),
-            ],
-          ),
-          Align(
-            alignment: Alignment.topCenter,
-            child: IgnorePointer(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  for (final p in widget.pings)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                            color: AppTheme.gold.withValues(alpha: 0.92),
-                            borderRadius: BorderRadius.circular(100)),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          if (!p.mine) ...[
-                            Transform.rotate(
-                              angle: _heading(p),
-                              child: const Icon(CupertinoIcons.location_north_fill,
-                                  size: 15, color: Colors.white),
-                            ),
-                            const SizedBox(width: 8),
-                          ],
-                          Text(
-                              p.mine
-                                  ? '📣 사이렌을 울렸어요! 파트너에게 알렸어요'
-                                  : '📣 파트너가 이쪽에서 울렸어요',
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold)),
-                        ]),
-                      ),
-                    ),
-                ]),
-              ),
-            ),
-          ),
-        ]),
-      );
-    });
-=======
     final n = game.size;
     final side = pad * 2 + n * cell + (n - 1) * gap;
     return AnimatedBuilder(
@@ -465,26 +313,10 @@ class _TouchBoardState extends State<TouchBoard>
         ],
       ),
     );
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
   }
 }
 
 class _TouchPainter extends CustomPainter {
-<<<<<<< HEAD
-  _TouchPainter(this.g, this.reveal, this.t, this.glyphs, this.m);
-  final TouchModel g;
-  final bool reveal;
-  final AppTheme t;
-  final GlyphCache glyphs;
-  final BigBoardMetrics m;
-
-  static const gold = AppTheme.gold;
-  static const opp = AppTheme.raceOpp;
-  static const fog = Color.fromRGBO(148, 161, 184, 1); // (0.58,0.63,0.72)
-
-  @override
-  void paint(Canvas canvas, Size size) {
-=======
   _TouchPainter(
       {required this.game,
       required this.theme,
@@ -546,35 +378,10 @@ class _TouchPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final t = theme;
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
     final fill = Paint();
     final stroke = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.6
-<<<<<<< HEAD
-      ..color = gold.withValues(alpha: 0.9);
-    const cell = 30.0;
-    for (var r = 0; r < g.size; r++) {
-      for (var c = 0; c < g.size; c++) {
-        final d = g.grid[r][c];
-        final vis = reveal || g.isVisible(r, c);
-        final rect = m.rect(r, c);
-        final rr = RRect.fromRectAndRadius(rect, const Radius.circular(3));
-        if (!vis) {
-          canvas.drawRRect(rr, fill..color = fog);
-          continue;
-        }
-        Color bg;
-        if (d.isRevealed) {
-          if (d.exploded) {
-            bg = Color.alphaBlend(Colors.red.withValues(alpha: 0.30), t.boardFrame);
-          } else if (d.isMegaphone) {
-            bg = Color.alphaBlend(gold.withValues(alpha: 0.30), t.boardFrame);
-          } else if (d.owner == FlagOwner.opponent) {
-            bg = Color.alphaBlend(opp.withValues(alpha: 0.32), t.boardFrame);
-          } else {
-            bg = t.cellRevealed;
-=======
       ..color = _gold.withValues(alpha: 0.9);
     const step = cell + gap;
     final n = game.size;
@@ -596,41 +403,10 @@ class _TouchPainter extends CustomPainter {
             bg = d.owner == FlagOwner.opponent
                 ? _opp.withValues(alpha: 0.32)
                 : t.cellRevealed;
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
           }
         } else {
           bg = t.cellClosedTop;
         }
-<<<<<<< HEAD
-        canvas.drawRRect(rr, fill..color = bg);
-        if (!reveal && !d.isRevealed && g.isFrontier(r, c)) canvas.drawRRect(rr, stroke);
-        final ctr = rect.center;
-        if (d.isRevealed) {
-          if (d.exploded) {
-            GlyphCache.drawCentered(canvas, glyphs.text('💣', cell * 0.5), ctr);
-          } else if (d.isMegaphone) {
-            GlyphCache.drawCentered(canvas, glyphs.text('📣', cell * 0.55), ctr);
-          } else if (d.adjacent > 0) {
-            GlyphCache.drawCentered(
-                canvas,
-                glyphs.text('${d.adjacent}', cell * 0.5,
-                    color: modeNumberColor(d.adjacent, t), weight: FontWeight.w900),
-                ctr);
-          }
-        } else if (d.isFlagged) {
-          if (d.isGolden) {
-            GlyphCache.drawCentered(
-                canvas,
-                glyphs.icon(flagIcon, cell * 0.55, gold, shadows: [
-                  Shadow(color: gold.withValues(alpha: 0.7), blurRadius: cell * 0.12)
-                ]),
-                ctr);
-          } else {
-            GlyphCache.drawCentered(canvas, glyphs.text('🚩', cell * 0.5), ctr);
-          }
-        } else if (d.oppFlagged) {
-          GlyphCache.drawCentered(canvas, glyphs.icon(flagIcon, cell * 0.46, opp), ctr);
-=======
         fill.color = bg;
         canvas.drawRRect(rr, fill);
         if (!vis) continue;
@@ -664,16 +440,12 @@ class _TouchPainter extends CustomPainter {
           }
         } else if (d.oppFlagged) {
           _center(canvas, _icon(Icons.flag, cell * 0.56, _opp), center);
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
         }
       }
     }
   }
 
   @override
-<<<<<<< HEAD
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
-=======
   bool shouldRepaint(covariant _TouchPainter old) =>
       old.version != version || old.reveal != reveal || old.theme.dark != theme.dark;
 }
@@ -812,5 +584,4 @@ class _TouchBlastState extends State<TouchBlast>
       ),
     );
   }
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
 }

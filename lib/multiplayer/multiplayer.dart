@@ -3,22 +3,10 @@ import 'dart:math';
 import '../core/board.dart';
 import '../core/types.dart';
 
-export '../core/types.dart' show RaceRule, SharedBoardState, RaceResult;
+export '../core/types.dart' show RaceRule, SharedBoardState;
 
 /// RaceRule의 로직 확장(제목/부제는 UI 단계에서). Swift RaceRule 대응.
 extension RaceRuleX on RaceRule {
-  String get title => switch (this) {
-        RaceRule.speed => '스피드',
-        RaceRule.score => '지뢰 대결',
-        RaceRule.coop => '합동',
-      };
-
-  String get subtitle => switch (this) {
-        RaceRule.speed => '먼저 다 클리어하면 승',
-        RaceRule.score => '보드 끝났을 때 더 많이 찾으면 승',
-        RaceRule.coop => '둘이서 함께 모두 클리어',
-      };
-
   /// 한 보드를 실시간 공유하는 규칙인지(지뢰 대결·합동). 스피드는 같은 보드를 각자 푼다.
   bool get sharesBoard => this == RaceRule.score || this == RaceRule.coop;
 
@@ -161,6 +149,8 @@ class OpponentStatus {
   final int elapsed;
   final int score;
 }
+
+enum RaceResult { win, lose, draw }
 
 /// 매칭 중 발생할 수 있는 오류
 enum MatchError implements Exception {

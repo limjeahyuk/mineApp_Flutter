@@ -50,6 +50,7 @@ class RewardedAdManager {
   }
 
   void load() {
+    if (!_started) return; // SDK 시작 전(테스트 등)엔 아무것도 하지 않는다
     if (_ad != null && _expired) {
       _ad?.dispose();
       _ad = null;

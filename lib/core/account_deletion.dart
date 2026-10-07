@@ -10,7 +10,6 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import 'board.dart';
 import 'local_store.dart';
-import 'theme.dart';
 
 /// 계정 삭제(회원탈퇴) — App Store 심사 가이드라인 5.1.1(v) 필수. Swift AccountDeletionService 이식.
 /// 순서: 1) 연동 계정이면 재인증(+Apple 토큰 폐기) 2) 클라우드 데이터 삭제 3) 인증 사용자 삭제
@@ -21,8 +20,7 @@ class AccountDeletion {
     final auth = FirebaseAuth.instance;
     final user = auth.currentUser;
     if (user == null) {
-      LocalStore.shared.wipeLocalData();
-    selectColorTheme('classic');
+      await LocalStore.shared.wipeLocalData();
       await auth.signInAnonymously();
       return;
     }
@@ -32,16 +30,10 @@ class AccountDeletion {
     final providers = user.providerData.map((p) => p.providerId).toList();
 
     // 1) 연동 계정이면 먼저 재인증(취소 시 데이터 보존을 위해 삭제보다 먼저).
-    try {
-      if (providers.contains('apple.com')) {
-        await _reauthAndRevokeApple(user);
-      } else if (providers.contains('google.com')) {
-        await _reauthGoogle(user);
-      }
-    } on DeletionCancelled {
-      rethrow;
-    } catch (e) {
-      throw DeletionFailed('본인 확인에 실패했어요: $e');
+    if (providers.contains('apple.com')) {
+      await _reauthAndRevokeApple(user);
+    } else if (providers.contains('google.com')) {
+      await _reauthGoogle(user);
     }
     // 익명 계정은 재인증 없이 바로 삭제 가능.
 
@@ -49,15 +41,10 @@ class AccountDeletion {
     await _deleteCloudData(uid, deviceId);
 
     // 3) 인증 계정 삭제.
-    try {
-      await user.delete();
-    } catch (e) {
-      throw DeletionFailed('계정 삭제에 실패했어요: $e');
-    }
+    await user.delete();
 
     // 4) 로컬 초기화 + 새 익명 계정으로 재시작.
-    LocalStore.shared.wipeLocalData();
-    selectColorTheme('classic');
+    await LocalStore.shared.wipeLocalData();
     await auth.signInAnonymously();
   }
 
@@ -70,11 +57,7 @@ class AccountDeletion {
     } catch (_) {}
     for (final d in Difficulty.values) {
       try {
-<<<<<<< HEAD
-        await _db.collection('scores').doc('${deviceId}_${d.label}').delete(); // 원본 docId = deviceId_난이도명
-=======
         await _db.collection('scores').doc('${deviceId}_${d.label}').delete();
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
       } catch (_) {}
     }
     try {
@@ -150,12 +133,4 @@ class DeletionCancelled implements Exception {
   const DeletionCancelled();
   @override
   String toString() => '본인 확인이 취소되어 삭제하지 않았어요.';
-}
-
-/// 재인증/삭제 실패 — 사유를 그대로 알림에 보여준다.
-class DeletionFailed implements Exception {
-  const DeletionFailed(this.message);
-  final String message;
-  @override
-  String toString() => message;
 }

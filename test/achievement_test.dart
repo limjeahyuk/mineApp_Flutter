@@ -4,6 +4,8 @@ import 'package:mine_app/core/board.dart';
 import 'package:mine_app/core/local_store.dart';
 import 'package:mine_app/progression/title.dart';
 
+import 'prefs_helper.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -50,7 +52,7 @@ void main() {
   });
 
   test('칭호 구매: 코인 차감 + 장착', () async {
-    SharedPreferences.setMockInitialValues({'shop.coins': 1200});
+    mockSavedPrefs({'shop.coins': 1200});
     await LocalStore.init();
     final s = LocalStore.shared;
 

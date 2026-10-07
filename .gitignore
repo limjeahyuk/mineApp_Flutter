@@ -27,6 +27,7 @@ migrate_working_dir/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
@@ -51,3 +52,32 @@ lib/firebase_options.dart
 
 # 개발 검증용 스크린샷 (로컬 전용)
 screenshots/
+
+# 개발 검증용 스크린샷 하네스 (로컬 전용)
+tool_screens/
+
+# 빌드 산출물(build/ 밖으로 복사한 것 포함)
+*.ipa
+*.apk
+*.aab
+*.dSYM.zip
+
+# 서명·인증 키 — 공개 저장소이므로 절대 커밋 금지 (GitHub Secrets로만)
+*.jks
+*.keystore
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+key.properties
+.env
+.env.*
+
+# Firebase CLI 캐시/로그
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# 참고: pubspec.lock · ios/Podfile.lock 은 앱 프로젝트라 의도적으로 커밋한다
+# (모든 기기·CI가 같은 패키지 버전으로 빌드되도록 — Dart/CocoaPods 공식 권장).

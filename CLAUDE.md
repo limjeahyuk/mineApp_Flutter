@@ -31,6 +31,7 @@
 
 - 상태관리: `ChangeNotifier` + `ListenableBuilder`(파라미터명 `listenable:`). provider 패키지 안 씀.
 - **`LocalStore`(core/local_store.dart) = Swift `RankingStore` 이식, ChangeNotifier.** 코인·아이템·기록·칭호·통계가 바뀌면 notify(홈 코인칩/뱃지가 구독). 기록은 `ScoreEntry`(core/score_entry.dart) 리스트(난이도별 최근 50). 통계를 바꾸는 메서드(recordSolo/recordRace/awardGoldenMine/recordTouch/뽑기)가 **내부에서 일일 bump + `refreshAchievements()`**까지 처리 — 화면에서 `Daily.bump` 중복 호출 금지(뽑기만 shop_logic이 bump).
+- **저장 키 = 원본 Swift UserDefaults 키 그대로**(`SharedPreferences.setPrefix('')`, LocalStore.init). 이 앱은 App Store의 Swift 앱(같은 번들 ID)을 대체하므로 업데이트 사용자의 코인·기록·칭호가 이어진다. 읽을 수 없는 타입(Data·Date·Dictionary)은 `ios/Runner/AppDelegate.swift`의 `migrateLegacyDefaults`가 첫 실행 때 `ranking.localRecords.json`·`solo.resume.snapshot.json`·`daily.progress.json`·`notice.lastSeenMs`로 변환(플래그 `migration.legacyConverted.v1`). 시작 지급도 Swift 플래그(`shop.startGranted`·`shop.starter*Granted`). 로컬 기록 date는 Swift JSONEncoder 기본(2001 기준 초, `ScoreEntry.toLocalJson`). 키를 바꾸면 기존 사용자 데이터가 끊기니 금지. prefix가 ''라 `_prefs.clear()` 금지(다른 SDK 값까지 지움) — `wipeLocalData`는 앱 키 접두사만 지운다. 테스트에서 값을 미리 채울 땐 `test/prefs_helper.dart`의 `mockSavedPrefs`. 검증: `test/legacy_test.dart`.
 - 테마: `lib/core/theme.dart` `AppTheme` — 원본 `Theme.swift` 팔레트(다크 우선 grayscale) 이식. 색상 테마(스킨) `ColorTheme`(클래식+5종, 1000코인)도 이식 — 표면색에만 틴트, 글자는 무채색. `colorThemeNotifier`/`selectColorTheme`. `GoldenMineIcon`(코인 아이콘)도 여기.
 - **UI 규약(core/ui.dart)**: SwiftUI 표현을 흉내 — `presentSheet`(=.sheet, CupertinoSheetRoute) + `SheetScaffold`(inline 제목+우상단 "닫기"), `presentFullScreen`(=.fullScreenCover), `presentMediumSheet`(=.presentationDetents medium), `fadeRoute`(홈↔게임 0.25초 크로스페이드), `PlainButton`(=.buttonStyle(.plain), 물결 없음), `ToastController/ToastOverlay`(검은 캡슐 토스트), `showAppAlert`/`showConfirmSheet`(Cupertino alert/action sheet), `SegmentedPicker`, `timeLabel`/`formatNumber`. 새 화면도 이 규약을 따른다.
 - 모드: 솔로 `game_screen`, 대전(스피드/점수) `multiplayer/`, 협동 `modes/touch_model`, 보물찾기 `modes/treasure_model`.
@@ -50,7 +51,7 @@
 
 ## 상점(코인·가챠) — 이식됨
 - `shop/shop_screen.dart`(뽑기/충전 2탭, initialTab 0=뽑기 1=충전 — 홈 코인칩=충전, 가방=뽑기), `shop/shop_logic.dart`(draw/drawTriple, 균등 1/3, 잭팟=×3 전부 일치 시 전 아이템 3개씩). ×3은 슬롯 3릴 순차 정지 연출.
-- 코인/광고: `LocalStore.coins`(시작 100), `drawCost 30`·`tripleDrawCost 90`, `claimRewardedAd`(+30, 하루 `dailyAdLimit 5`). 광고는 Swift 폴백과 같은 4초 시뮬 화면(`_RewardedAdView`) — 실제 AdMob 미이식.
+- 코인/광고: `LocalStore.coins`(시작 100), `drawCost 30`·`tripleDrawCost 90`, `claimRewardedAd`(+30, 하루 `dailyAdLimit 5`). 광고는 `shop/rewarded_ads.dart`(Swift RewardedAdManager 이식: 실제 AdMob 보상형, 첫 프레임 후 ATT 요청→SDK 시작, 미리 로드·지수 백오프·55분 만료). 미준비면 Swift처럼 4초 시뮬 화면(`_RewardedAdView`)으로 폴백. iOS 앱 ID/ATT 문구/SKAdNetwork는 Info.plist, **Android는 아직 Google 테스트 앱 ID·광고 단위 — 출시 전 실제 ID로 교체**.
 - 홈·대전메뉴 코인 칩은 `LocalStore.coins` 실값 표시. 홈 상점 아이콘/코인 칩 → ShopScreen.
 
 ## 랭킹 — 이식됨
@@ -120,8 +121,11 @@
 ## 초대 딥링크
 - `mineapp://join?g=mine|treasure|touch&c=코드` (iOS CFBundleURLSchemes·Android intent-filter 등록, `app_links`). 홈이 받아 해당 방 참가 화면으로 이동. 공유 문구/링크는 `InviteLink.webURL`(Firebase Hosting `/j` 랜딩, Swift와 동일) + `share_plus`.
 
+## 연습 보드(첫 진입 온보딩)
+- `guide/practice.dart` — 게임별(솔로·지뢰찾기·보물찾기·너에게 닿기를) 단계형 연습 보드. 첫 진입 때 한 번 자동(`pushGameWithOnboarding`, 멀티 메뉴는 `replace: true`), 이후엔 홈 솔로 카드/멀티 게임 탭의 `?` 버튼(`openPractice`). 본 적 있는지 `LocalStore.onboarded`. 테스트 `test/practice_test.dart`.
+
 ## 원본에서 아직 미이식(로드맵)
 
-실제 AdMob(시뮬레이션만), Game Center(iOS 전용), ATT. 구버전 Swift 앱의 기기 로컬(UserDefaults) 데이터 자동 이전은 안 됨(클라우드 연동 계정은 머지로 복원됨).
+Game Center(iOS 전용). Android AdMob 실제 ID.
 
 코드는 됐고 **콘솔/수동만 남은 것**: Firebase 규칙 실제 게시(위 dry-run 통과), 릴리스 키스토어 생성, Firebase Auth provider 활성화 + Apple capability/프로비저닝 + Android SHA-1 등록.

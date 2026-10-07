@@ -68,19 +68,11 @@ class TreasureModel extends ChangeNotifier {
     newGame();
   }
 
-  bool _disposed = false;
-
   @override
   void dispose() {
-    _disposed = true;
     _timer?.cancel();
     tick.dispose();
     super.dispose();
-  }
-
-  @override
-  void notifyListeners() {
-    if (!_disposed) super.notifyListeners();
   }
 
   // MARK: - 파생 값

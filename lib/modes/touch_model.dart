@@ -93,19 +93,11 @@ class TouchModel extends ChangeNotifier {
     startShared(seed: Random().nextInt(1 << 32), asHost: true);
   }
 
-  bool _disposed = false;
-
   @override
   void dispose() {
-    _disposed = true;
     _timer?.cancel();
     tick.dispose();
     super.dispose();
-  }
-
-  @override
-  void notifyListeners() {
-    if (!_disposed) super.notifyListeners();
   }
 
   bool inBounds(int r, int c) => r >= 0 && r < size && c >= 0 && c < size;
@@ -602,13 +594,9 @@ class TouchModel extends ChangeNotifier {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (state == GameState.playing && elapsed < 9999) {
         elapsed++;
-<<<<<<< HEAD
-        notifyListeners(); // 상단 타이머 — 보드는 한 장의 CustomPaint라 매초 다시 그려도 가볍다
-=======
         // 80×80 보드(6400칸)를 매초 통째로 rebuild하지 않도록 보드 알림 대신
         // 시계 전용 알림(tick)만 올린다. 경과 시간 표시는 tick을 구독한다.
         tick.value++;
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
       }
     });
   }

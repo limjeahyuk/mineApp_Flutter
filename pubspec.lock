@@ -49,7 +49,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.5"
-<<<<<<< HEAD
   app_tracking_transparency:
     dependency: "direct main"
     description:
@@ -58,8 +57,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.7"
-=======
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
   args:
     dependency: transitive
     description:
@@ -136,17 +133,10 @@ packages:
     dependency: transitive
     description:
       name: code_assets
-<<<<<<< HEAD
-      sha256: bf394f466ba9205f1812a0433b392d6af280f155f56651eda7c18cc32ed493b8
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.2.1"
-=======
       sha256: "828110d598123b5ea96c00c9f3c72105bf79f8ee36c20a39b26209ade421ec57"
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
   collection:
     dependency: transitive
     description:
@@ -398,17 +388,10 @@ packages:
     dependency: transitive
     description:
       name: hooks
-<<<<<<< HEAD
-      sha256: "9a62a50b50b769a737bc0a8ff381f333529df3ab746b2f6b02e83760231455ba"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.0.2"
-=======
       sha256: eaac480a35ec0814146c2c48d96aaa829e0e44a7662c88ae84c9edf4bc35651f
       url: "https://pub.dev"
     source: hosted
     version: "2.2.0"
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
   http:
     dependency: transitive
     description:
@@ -520,11 +503,7 @@ packages:
       sha256: "307249ce4ff29d58a18e97f6345f539382eb9c9c29ecda628900f31de0443dd9"
       url: "https://pub.dev"
     source: hosted
-<<<<<<< HEAD
-    version: "1.18.0"
-=======
     version: "1.19.0"
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
   mime:
     dependency: transitive
     description:
@@ -553,17 +532,10 @@ packages:
     dependency: transitive
     description:
       name: objective_c
-<<<<<<< HEAD
-      sha256: b7fb95a6d9a4f009edd63dc5ac69f07420b23a16161c6dd8660290b59c602e8e
-      url: "https://pub.dev"
-    source: hosted
-    version: "9.5.0"
-=======
       sha256: "5c80c2ad6e2c0397de5db38c6d653e69616a3397e13aa7633bf39eb668f2041b"
       url: "https://pub.dev"
     source: hosted
     version: "9.6.2"
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
   package_config:
     dependency: transitive
     description:
@@ -656,17 +628,10 @@ packages:
     dependency: transitive
     description:
       name: record_use
-<<<<<<< HEAD
-      sha256: "2551bd8eecfe95d14ae75f6021ad0248be5c27f138c2ec12fcb52b500b3ba1ed"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.6.0"
-=======
       sha256: "1cb8564af8d43b464294411db9217f5ec04891c6f22ee2c32d73ae05e88a6bd2"
       url: "https://pub.dev"
     source: hosted
     version: "1.1.1"
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
   rx:
     dependency: transitive
     description:
@@ -904,7 +869,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.1"
-<<<<<<< HEAD
   webview_flutter:
     dependency: transitive
     description:
@@ -933,12 +897,10 @@ packages:
     dependency: transitive
     description:
       name: webview_flutter_wkwebview
-      sha256: "0f784be1b080e5b918ef7c2c070c1f4616899fd23f1d001feb74b4978f92bdbc"
+      sha256: a9cc3f507ee40127ed0812ca54d00701a27833f51ea0b5820f4b3e7f42518bf3
       url: "https://pub.dev"
     source: hosted
-    version: "3.26.2"
-=======
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
+    version: "3.27.0"
   win32:
     dependency: transitive
     description:
@@ -964,5 +926,5 @@ packages:
     source: hosted
     version: "3.1.4"
 sdks:
-  dart: ">=3.12.2 <4.0.0"
-  flutter: ">=3.44.0"
+  dart: ">=3.13.0 <4.0.0"
+  flutter: ">=3.47.0"

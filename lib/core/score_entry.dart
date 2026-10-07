@@ -50,6 +50,20 @@ class ScoreEntry {
     );
   }
 
+  // Swift JSONEncoder 기본 Date = 2001-01-01 기준 초. 원본 앱의 로컬 기록(UserDefaults)과 같은 형식.
+  static const _refEpochSec = 978307200;
+
+  /// 기기 로컬 저장용(원본 Swift `[ScoreEntry]` Codable과 같은 모양 — 옛 앱 기록을 그대로 읽는다).
+  Map<String, Object> toLocalJson() => {
+        ...toJson(),
+        'date': date.millisecondsSinceEpoch / 1000.0 - _refEpochSec,
+      };
+
+  static ScoreEntry? fromLocalJson(Map<String, dynamic> m) {
+    final d = m['date'];
+    return fromJson({...m, 'date': d is num ? d + _refEpochSec : null});
+  }
+
   static String _newId() {
     final r = Random();
     String hex(int n) =>

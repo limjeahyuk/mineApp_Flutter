@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -62,11 +61,8 @@ const List<List<int>> _offsets = [
   [1, -1], [1, 0], [1, 1],
 ];
 
-<<<<<<< HEAD
-=======
 /// 최고 기록 저장소 — LocalStore(shared_preferences). 초기화 전(테스트)이면 인메모리.
 final Map<String, int> _memBestTimes = {};
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
 
 class GameModel extends ChangeNotifier {
   List<List<Cell>> grid = [];
@@ -726,35 +722,16 @@ class GameModel extends ChangeNotifier {
     return (diff, seed);
   }
 
-<<<<<<< HEAD
-  /// 같은 코드 판의 내 최고 클리어 시간(초) — Swift UserDefaults `best_<code>`.
-  int? bestTime(String code) => LocalStore.maybe?.bestTimeForCode(code);
-=======
   int? bestTime(String code) {
     final store = LocalStore.maybeShared;
     if (store != null) return store.bestTimeForCode(code);
     final v = _memBestTimes[code];
     return (v != null && v > 0) ? v : null;
   }
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
 
   void _recordWin() {
     final code = boardCode;
     if (code == null) return;
-<<<<<<< HEAD
-    LocalStore.maybe?.recordCodeWin(code, elapsed);
-  }
-
-  // MARK: - 이어하기(앱 종료/백그라운드 후 솔로 판 복원) — Swift SoloSnapshot
-
-  /// 솔로 + 스피드 + 진행 중일 때만 스냅샷(JSON 문자열). 칸 상태를 통째로 담는다.
-  String? makeResumeSnapshot() {
-    if (!_isSolo || rule != RaceRule.speed || shared) return null;
-    if (state != GameState.playing || seed == null) return null;
-    return jsonEncode({
-      'difficulty': difficulty.label,
-      'seed': seed,
-=======
     final store = LocalStore.maybeShared;
     if (store != null) {
       store.recordCodeBest(code, elapsed);
@@ -773,14 +750,13 @@ class GameModel extends ChangeNotifier {
     return {
       'difficulty': difficulty.label,
       'seed': seed!,
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
       'elapsed': elapsed,
       'didContinue': _didContinue,
       'usedItem': usedAutoFlagThisGame,
       'cells': [
         for (final row in grid)
           for (final c in row)
-<<<<<<< HEAD
+            // Swift SoloSnapshot.CellData와 같은 모양(옛 앱이 남긴 스냅샷도 그대로 읽힌다).
             {
               'm': c.isMine,
               'r': c.isRevealed,
@@ -788,23 +764,7 @@ class GameModel extends ChangeNotifier {
               'x': c.exploded,
               'a': c.adjacent,
               'g': c.isGolden,
-            }
-      ],
-    });
-  }
-
-  /// 저장된 스냅샷으로 그대로 복원하고 즉시 이어서 진행. 깨졌으면 새 판.
-  void restore(Map<String, dynamic> s) {
-    final diff = Difficulty.fromLabel(s['difficulty'] as String? ?? '');
-=======
-            [
-              c.isMine ? 1 : 0,
-              c.isRevealed ? 1 : 0,
-              c.isFlagged ? 1 : 0,
-              c.exploded ? 1 : 0,
-              c.adjacent,
-              c.isGolden ? 1 : 0,
-            ],
+            },
       ],
     };
   }
@@ -813,7 +773,6 @@ class GameModel extends ChangeNotifier {
   /// 데이터가 깨졌으면(난이도/칸 수 불일치) 새 판으로 시작한다.
   void restore(Map<String, dynamic> s) {
     final diff = Difficulty.fromLabel((s['difficulty'] as String?) ?? '');
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
     final cells = s['cells'] as List?;
     if (diff == null || cells == null || cells.length != diff.rows * diff.cols) {
       newGame();
@@ -831,48 +790,16 @@ class GameModel extends ChangeNotifier {
     _minesPlaced = true;
     _resetReviveState();
     _didContinue = s['didContinue'] as bool? ?? false;
-<<<<<<< HEAD
-    usedAutoFlagThisGame = s['usedItem'] as bool? ?? true; // 구버전은 보수적으로 '사용'
-=======
     usedAutoFlagThisGame = s['usedItem'] as bool? ?? true;
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
     autoFlagTickets = min(autoFlagSupplier(), soloAutoFlagCap(difficulty));
     radarTickets = min(radarSupplier(), difficulty.radarCap);
     soloWinResult = null;
-    final c = diff.cols;
-    grid = [
-      for (var r = 0; r < diff.rows; r++)
-        [
-          for (var col = 0; col < c; col++)
-            () {
-<<<<<<< HEAD
-              final d = cells[r * c + col] as Map;
-              return Cell(r * c + col)
-                ..isMine = d['m'] == true
-                ..isRevealed = d['r'] == true
-                ..isFlagged = d['f'] == true
-                ..exploded = d['x'] == true
-                ..adjacent = (d['a'] as num?)?.toInt() ?? 0
-                ..isGolden = d['g'] == true;
-            }(),
-        ],
-    ];
-    // 이미 깃발이 꽂힌 황금지뢰는 '발견 완료'로 — 재보상 방지.
-=======
-              final d = (cells[r * c + col] as List)
-                  .map((e) => (e as num).toInt())
-                  .toList();
-              return Cell(r * c + col)
-                ..isMine = d[0] == 1
-                ..isRevealed = d[1] == 1
-                ..isFlagged = d[2] == 1
-                ..exploded = d[3] == 1
-                ..adjacent = d[4]
-                ..isGolden = d.length > 5 && d[5] == 1;
-            }(),
-        ],
-    ];
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
+    try {
+      grid = _restoredGrid(diff, cells);
+    } catch (_) {
+      newGame(); // 깨진 스냅샷 — 새 판
+      return;
+    }
     for (final row in grid) {
       for (final cell in row) {
         if (cell.isGolden && cell.isFlagged) _goldenAwarded.add(cell.id);
@@ -881,6 +808,26 @@ class GameModel extends ChangeNotifier {
     state = GameState.playing;
     _startTimer();
     notifyListeners();
+  }
+
+  static List<List<Cell>> _restoredGrid(Difficulty diff, List cells) {
+    final c = diff.cols;
+    return [
+      for (var r = 0; r < diff.rows; r++)
+        [
+          for (var col = 0; col < c; col++)
+            () {
+              final d = cells[r * c + col] as Map;
+              return Cell(r * c + col)
+                ..isMine = d['m'] == true
+                ..isRevealed = d['r'] == true
+                ..isFlagged = d['f'] == true
+                ..exploded = d['x'] == true
+                ..adjacent = (d['a'] as num?)?.toInt() ?? 0
+                ..isGolden = d['g'] == true; // 구버전 스냅샷엔 없음 → false
+            }(),
+        ],
+    ];
   }
 
   // MARK: - 타이머

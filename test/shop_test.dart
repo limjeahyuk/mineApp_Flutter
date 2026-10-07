@@ -1,16 +1,17 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mine_app/core/local_store.dart';
 import 'package:mine_app/core/types.dart';
 import 'package:mine_app/shop/shop_logic.dart';
+
+import 'prefs_helper.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('뽑기: 코인 차감 + 아이템 지급, 부족하면 null', () async {
-    SharedPreferences.setMockInitialValues({'shop.coins': 60});
+    mockSavedPrefs({'shop.coins': 60});
     await LocalStore.init();
     final s = LocalStore.shared;
     final shop = ShopLogic(rng: Random(1));
@@ -32,7 +33,7 @@ void main() {
   });
 
   test('×3 뽑기: 90코인 차감 + 3개 지급', () async {
-    SharedPreferences.setMockInitialValues({'shop.coins': 100});
+    mockSavedPrefs({'shop.coins': 100});
     await LocalStore.init();
     final s = LocalStore.shared;
     final shop = ShopLogic(rng: Random(2));
@@ -48,7 +49,7 @@ void main() {
   });
 
   test('광고 무료 코인: 하루 5회 한도', () async {
-    SharedPreferences.setMockInitialValues({'shop.coins': 0});
+    mockSavedPrefs({'shop.coins': 0});
     await LocalStore.init();
     final s = LocalStore.shared;
 

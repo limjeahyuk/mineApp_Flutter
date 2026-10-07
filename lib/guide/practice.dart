@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/game_model.dart';
 import '../core/haptics.dart';
 import '../core/local_store.dart';
-import '../core/nav.dart';
+import '../core/ui.dart';
 import '../core/theme.dart';
 import '../game/cell_view.dart';
 
@@ -297,32 +297,35 @@ class PracticeBoard {
 /// 원본 RootView.start: 큰 판(최고급)은 세로 기본 + 가로 허용. 게임 화면은 닫힐 때 세로로 되돌린다.
 void pushGameWithOnboarding(
     BuildContext context, OnboardKind kind, Widget Function() game,
-    {bool landscape = false}) {
+    {bool landscape = false, bool replace = false}) {
   final nav = Navigator.of(context);
+  // replace: 멀티 메뉴처럼 현재 화면을 게임으로 바꿔 넣는 경우(닫으면 홈으로).
+  final open = replace ? nav.pushReplacement : nav.push;
   if (kind.seen) {
-    setBigBoardOrientation(landscape);
-    nav.push(fadeRoute(game()));
+    setAppOrientation(allowLandscape: landscape);
+    open(fadeRoute((_) => game()));
     return;
   }
-  nav.push(fadeRoute(PracticeScreen(
-    script: kind.script,
-    finishTitle: '실전 시작하기',
-    onFinish: () {
-      kind.markSeen();
-      setBigBoardOrientation(landscape);
-      nav.pushReplacement(fadeRoute(game()));
-    },
-  )));
+  open(fadeRoute((_) => PracticeScreen(
+        script: kind.script,
+        finishTitle: '실전 시작하기',
+        onFinish: () {
+          kind.markSeen();
+          setAppOrientation(allowLandscape: landscape);
+          nav.pushReplacement(fadeRoute((_) => game()));
+        },
+      )));
 }
 
 /// ? 버튼 — 연습 보드만 풀스크린으로 열고, 끝나면 닫는다.
 void openPractice(BuildContext context, OnboardKind kind) {
-  Navigator.of(context).push(coverRoute(Builder(
-      builder: (ctx) => PracticeScreen(
+  presentFullScreen<void>(
+      context,
+      (ctx) => PracticeScreen(
             script: kind.script,
             finishTitle: '닫기',
             onFinish: () => Navigator.of(ctx).pop(),
-          ))));
+          ));
 }
 
 /// 모드 카드/탭 모서리의 작은 ? 버튼.

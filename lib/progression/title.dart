@@ -1,16 +1,16 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/board.dart';
+import '../core/local_store.dart';
 
-/// 칭호(타이틀) 시스템 — Swift Title.swift 이식. 카탈로그(순수 데이터) + 이름 밑 배지.
-/// 보유/장착/진행도 평가·저장은 `LocalStore`(Swift RankingStore)가 맡는다.
+/// 칭호(타이틀) 시스템 — Swift Title.swift 이식. 데이터 카탈로그 + 목표 평가 + 해금.
+/// 보유/장착/통계는 LocalStore가, 카탈로그(이 파일)는 순수 데이터다.
 
 enum TitleRarity {
-  common('일반', Color.fromRGBO(158, 166, 179, 1), CupertinoIcons.rosette),
-  rare('레어', Color.fromRGBO(77, 158, 242, 1), CupertinoIcons.checkmark_seal_fill),
-  epic('에픽', Color.fromRGBO(171, 117, 245, 1), CupertinoIcons.sparkles),
-  legendary('전설', Color.fromRGBO(250, 199, 77, 1), Icons.emoji_events); // crown.fill 대체
+  common('일반', Color(0xFF9EA6B3), Icons.workspace_premium_outlined),
+  rare('레어', Color(0xFF4D9EF2), Icons.verified),
+  epic('에픽', Color(0xFFAB75F5), Icons.auto_awesome),
+  legendary('전설', Color(0xFFFAC74D), Icons.emoji_events);
 
   const TitleRarity(this.label, this.color, this.icon);
   final String label;
@@ -50,16 +50,6 @@ class WinStreakGoal extends Goal {
   final int n;
 }
 
-class TouchClearsGoal extends Goal {
-  const TouchClearsGoal(this.n);
-  final int n;
-}
-
-class TouchUnderGoal extends Goal {
-  const TouchUnderGoal(this.sec);
-  final int sec;
-}
-
 class NoItemClearGoal extends Goal {
   const NoItemClearGoal(this.d, this.n);
   final Difficulty d;
@@ -81,15 +71,11 @@ class JackpotGoal extends Goal {
   final int n;
 }
 
-class ThemesOwnedGoal extends Goal {
-  const ThemesOwnedGoal(this.n);
+class CoinsAtLeastGoal extends Goal {
+  const CoinsAtLeastGoal(this.n);
   final int n;
 }
 
-<<<<<<< HEAD
-class CoinsAtLeastGoal extends Goal {
-  const CoinsAtLeastGoal(this.n);
-=======
 class TouchClearsGoal extends Goal {
   const TouchClearsGoal(this.n);
   final int n;
@@ -102,7 +88,6 @@ class TouchUnderGoal extends Goal {
 
 class ThemesOwnedGoal extends Goal {
   const ThemesOwnedGoal(this.n);
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
   final int n;
 }
 
@@ -125,29 +110,6 @@ class TitleSource {
   final int cost;
 }
 
-/// 칭호 카드의 표시 상태.
-sealed class TitleState {
-  const TitleState();
-}
-
-class TitleEquipped extends TitleState {
-  const TitleEquipped();
-}
-
-class TitleOwned extends TitleState {
-  const TitleOwned();
-}
-
-class TitlePurchasable extends TitleState {
-  const TitlePurchasable(this.cost, this.affordable);
-  final int cost;
-  final bool affordable;
-}
-
-class TitleLocked extends TitleState {
-  const TitleLocked();
-}
-
 class Title {
   const Title(this.id, this.name, this.rarity, this.source, this.hint,
       {this.hidden = false});
@@ -160,13 +122,13 @@ class Title {
 
   int? get purchaseCost =>
       source.kind == TitleSourceKind.purchase ? source.cost : null;
-  Goal? get goal => source.goal;
-  bool get isStarter => source.kind == TitleSourceKind.starter;
 
   /// 전체 카탈로그(단일 출처) — Swift Title.all과 동일.
   static const List<Title> all = [
+    // 스타터
     Title('rookie', '지뢰 입문자', TitleRarity.common, TitleSource.starter(),
         '처음부터 함께하는 칭호'),
+    // 클리어형
     Title('grad_beginner', '초급 졸업', TitleRarity.common,
         TitleSource.achievement(ClearsGoal(Difficulty.beginner, 10)),
         '초급 10회 클리어'),
@@ -187,46 +149,40 @@ class Title {
     Title('flawless_ultimate', '최고급 무결점', TitleRarity.legendary,
         TitleSource.achievement(NoItemClearGoal(Difficulty.ultimate, 1)),
         '아이템 없이 최고급 클리어'),
+    // 스피드형
     Title('speedrunner', '스피드러너', TitleRarity.rare,
         TitleSource.achievement(BestUnderGoal(Difficulty.beginner, 5)),
         '초급을 5초 이내에 클리어'),
     Title('flash_inter', '전광석화', TitleRarity.epic,
         TitleSource.achievement(BestUnderGoal(Difficulty.intermediate, 40)),
         '중급을 40초 이내에 클리어'),
+    // 대전형
     Title('race_rookie', '대전 새내기', TitleRarity.common,
         TitleSource.achievement(RaceWinsGoal(1)), '대전에서 1승'),
     Title('streak5', '연승가도', TitleRarity.rare,
         TitleSource.achievement(WinStreakGoal(5)), '대전 5연승'),
     Title('duelist', '승부사', TitleRarity.epic,
         TitleSource.achievement(RaceWinsGoal(50)), '대전에서 50승'),
-<<<<<<< HEAD
-=======
     // 협동형
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
     Title('soulmate', '환상의 짝꿍', TitleRarity.rare,
         TitleSource.achievement(TouchClearsGoal(10)), '‘너에게 닿기를’ 10회 성공'),
     Title('telepathy', '텔레파시', TitleRarity.epic,
         TitleSource.achievement(TouchUnderGoal(30)), '‘너에게 닿기를’ 30초 이내 성공'),
-<<<<<<< HEAD
-=======
     // 경제/뽑기형
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
     Title('golden_hand', '황금손', TitleRarity.rare,
         TitleSource.achievement(GoldenMinesGoal(100)), '황금지뢰 100개 발견'),
     Title('gacha_addict', '뽑기 중독', TitleRarity.rare,
         TitleSource.achievement(DrawsGoal(100)), '뽑기 100회'),
     Title('collector', '수집가', TitleRarity.rare,
         TitleSource.achievement(ThemesOwnedGoal(3)), '색상 테마 3개 보유'),
-<<<<<<< HEAD
-=======
     // 히든
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
     Title('jackpot', '잭팟 주인공', TitleRarity.legendary,
         TitleSource.achievement(JackpotGoal(1)), 'x3 뽑기에서 잭팟 터뜨리기',
         hidden: true),
     Title('millionaire', '지뢰 백만장자', TitleRarity.epic,
         TitleSource.achievement(CoinsAtLeastGoal(9999)), '코인 9,999개 보유',
         hidden: true),
+    // 구매형
     Title('supporter', '후원자', TitleRarity.rare, TitleSource.purchase(1000),
         '상점에서 코인으로 구매'),
     Title('gold_member', '골드 멤버', TitleRarity.epic, TitleSource.purchase(1500),
@@ -256,66 +212,18 @@ class Title {
     return null;
   }
 
-  /// 표시 이름으로 찾기(랭킹/멀티는 이름 문자열만 주고받으므로 희귀도 색 복원용).
-  static Title? byName(String name) {
-    for (final t in all) {
-      if (t.name == name) return t;
-    }
-    return null;
-  }
-
   static List<Title> get achievements =>
       all.where((t) => t.source.kind == TitleSourceKind.achievement).toList();
   static List<Title> get purchasables =>
       all.where((t) => t.purchaseCost != null).toList();
-  static Set<String> get starterIds =>
-      {for (final t in all) if (t.isStarter) t.id};
 }
 
-/// 닉네임 아래 작게 붙는 칭호 배지(멀티·랭킹·프로필·업적 공용). 이름이 비면 아무것도 안 그린다.
-class TitleBadge extends StatelessWidget {
-  const TitleBadge({super.key, required this.name, this.size = 10});
-  final String name;
-  final double size;
+/// 목표 진행도 (현재값, 목표값, 달성여부). Swift RankingStore.goalProgress 이식.
+({int current, int target, bool done}) goalProgress(Goal g) {
+  final s = LocalStore.shared;
+  int totalClears() =>
+      Difficulty.values.fold(0, (a, d) => a + s.soloClearCount(d));
 
-<<<<<<< HEAD
-  @override
-  Widget build(BuildContext context) {
-    if (name.isEmpty) return const SizedBox.shrink();
-    final rarity = Title.byName(name)?.rarity ?? TitleRarity.common;
-    final c = rarity.color;
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: size * 0.8, vertical: size * 0.3),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(100),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [c.withValues(alpha: 0.24), c.withValues(alpha: 0.10)],
-        ),
-        border: Border.all(color: c.withValues(alpha: 0.45), width: 0.8),
-        boxShadow: rarity == TitleRarity.legendary
-            ? [BoxShadow(color: c.withValues(alpha: 0.4), blurRadius: 4, offset: const Offset(0, 1))]
-            : null,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(rarity.icon, size: size, color: c),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    color: c, fontSize: size, fontWeight: FontWeight.w900)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-=======
   switch (g) {
     case ClearsGoal(:final d, :final n):
       final c = s.soloClearCount(d);
@@ -426,4 +334,3 @@ class TitleBadge extends StatelessWidget {
     );
   }
 }
->>>>>>> b7044c5f47a3cc3a46cf09873deec5db40c3c62e
