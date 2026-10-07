@@ -38,6 +38,15 @@ target 'Runner' do
 end
 
 post_install do |installer|
+  # Xcode 27: 격리(com.apple.quarantine) 표시가 붙은 파일은 아카이브 중 빌드 스크립트(rsync)가
+  # 'Operation not permitted'로 열지 못한다. Homebrew로 받은 Flutter 엔진 캐시와 pod 파일에 붙어
+  # 있으므로 pod install 때마다 지운다(표시만 지울 뿐 파일 내용은 그대로).
+  [installer.sandbox.root.to_s,
+   File.join(flutter_root, 'bin', 'cache', 'artifacts', 'engine')].each do |dir|
+    next unless File.directory?(dir)
+    system('xattr', '-dr', 'com.apple.quarantine', dir, out: File::NULL, err: File::NULL)
+  end
+
   # 빌드 스크립트(rsync로 프레임워크 복사) 샌드박스 끄기 — Runner와 동일하게 Pods 쪽도 명시.
   installer.pods_project.build_configurations.each do |config|
     config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
