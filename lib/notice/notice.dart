@@ -1,7 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 
+import 'package:flutter/foundation.dart';
+
 import '../core/auth_service.dart';
+import '../core/local_store.dart';
 
 /// 운영 공지 한 건 — Firestore `notices` 문서 1:1. Swift Notice 이식.
 /// 작성은 콘솔(어드민), 앱은 읽기만.
@@ -20,7 +23,7 @@ class Notice {
   final String body;
   final DateTime date;
   final bool pinned; // 목록 상단 고정
-  final bool showPopup; // 시작 팝업 대상(현재 팝업 미이식)
+  final bool showPopup; // 시작 팝업으로 띄울지
 
   String get dateText =>
       '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
@@ -67,5 +70,59 @@ class NoticeService {
       return b.date.compareTo(a.date);
     });
     return items;
+  }
+}
+
+/// 공지 상태 — 목록·시작 팝업·"오늘은 그만 보기"·읽음 표시. Swift NoticeStore 이식.
+class NoticeStore extends ChangeNotifier {
+  NoticeStore._();
+  static final shared = NoticeStore._();
+
+  List<Notice> notices = [];
+
+  /// 시작 팝업으로 띄울 공지(홈에서만 표시). 없으면 null.
+  Notice? popup;
+
+  bool get hasUnread {
+    final last = LocalStore.shared.noticeLastSeen;
+    return notices.any((n) => n.date.isAfter(last));
+  }
+
+  /// 앱 시작 시 한 번 — 불러오고 오늘 아직 안 막은 첫 팝업 공지를 고른다.
+  Future<void> loadOnLaunch() async {
+    await reload();
+    for (final n in notices) {
+      if (n.showPopup && !LocalStore.shared.isNoticeDismissedToday(n.id)) {
+        popup = n;
+        break;
+      }
+    }
+    notifyListeners();
+  }
+
+  Future<void> reload() async {
+    try {
+      notices = await NoticeService().fetchActive();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  void dismissForToday(Notice n) {
+    LocalStore.shared.dismissNoticeForToday(n.id);
+    popup = null;
+    notifyListeners();
+  }
+
+  void dismissPopup() {
+    popup = null;
+    notifyListeners();
+  }
+
+  void markAllSeen() {
+    if (notices.isEmpty) return;
+    final newest =
+        notices.map((n) => n.date).reduce((a, b) => a.isAfter(b) ? a : b);
+    LocalStore.shared.markNoticesSeen(newest);
+    notifyListeners();
   }
 }

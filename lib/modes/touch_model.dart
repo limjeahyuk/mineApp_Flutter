@@ -90,10 +90,18 @@ class TouchModel extends ChangeNotifier {
     startShared(seed: Random().nextInt(1 << 32), asHost: true);
   }
 
+  bool _disposed = false;
+
   @override
   void dispose() {
+    _disposed = true;
     _timer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
   }
 
   bool inBounds(int r, int c) => r >= 0 && r < size && c >= 0 && c < size;
@@ -590,9 +598,7 @@ class TouchModel extends ChangeNotifier {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (state == GameState.playing && elapsed < 9999) {
         elapsed++;
-        // ponytail: 80×80 보드(6400칸)를 매초 통째로 rebuild하지 않도록 elapsed는
-        // 알림 없이 증가만 시킨다. 협동 화면은 경과시간을 표시하지 않고, 결과 보고용
-        // elapsed는 실제 조작(reveal/원격 반영)마다 오는 notify로 함께 갱신된다.
+        notifyListeners(); // 상단 타이머 — 보드는 한 장의 CustomPaint라 매초 다시 그려도 가볍다
       }
     });
   }

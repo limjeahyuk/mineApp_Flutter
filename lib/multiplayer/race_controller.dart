@@ -4,13 +4,14 @@ import 'package:flutter/foundation.dart';
 
 import '../core/game_model.dart';
 import '../core/haptics.dart';
+import '../core/local_store.dart';
 import '../core/types.dart';
 import 'multiplayer.dart';
 
 enum RaceFlow { searching, starting, racing, finished }
 
-/// 레이스 한 판 진행 — 로컬 GameModel + MatchService를 묶어 매칭→카운트다운→레이스→결과를
-/// 담당한다. Swift RaceViewModel 이식. (AFK 자동항복은 후속 단계로 미이식)
+/// 레이스 한 판 진행 — Swift RaceViewModel 이식. 로컬 GameModel + MatchService를 묶어
+/// 매칭 → 카운트다운 → 레이스 → 결과, 승패 판정, 자리비움(AFK) 항복을 담당한다.
 class RaceController extends ChangeNotifier {
   RaceController(this.service) {
     service.onRoomCode = (code) {
@@ -20,11 +21,23 @@ class RaceController extends ChangeNotifier {
     game.addListener(_onGameChanged);
     service.onOpponent = _handleOpponent;
     service.onOpponentLeft = _handleOpponentLeft;
-    // 지뢰 대결/합동(공유 보드) 동기화
+    game.onLocalAction = _registerActivity;
+    // 아이템: 내 보드는 보유 인벤토리에서 채우고 쓸 때마다 영구 차감(봇 미러는 미연결=0).
+    final store = LocalStore.maybe;
+    if (store != null) {
+      game.autoFlagSupplier = () => store.ownedFlags;
+      game.onConsumeAutoFlag = store.consumeFlag;
+      game.radarSupplier = () => store.ownedRadars;
+      game.onConsumeRadar = store.consumeRadar;
+      game.onGoldenMineFound = () {
+        store.awardGoldenMine();
+        Haptics.success();
+      };
+    }
+    // 공유 보드(지뢰 대결·합동): 내 동작을 상대에게, 상대 동작을 내 보드에.
     game.onPushReveal = (safe, exploded) => service.pushReveal(safe, exploded);
     game.onPushFlag = (index, set) => service.pushFlag(index, set: set);
     service.onRemoteBoard = (board) => game.applySharedState(board);
-    game.onGoldenMineFound = () => Haptics.success();
   }
 
   final GameModel game = GameModel();
@@ -35,17 +48,22 @@ class RaceController extends ChangeNotifier {
   OpponentStatus opponent = OpponentStatus();
   RaceResult? result;
   bool opponentLeft = false;
+  bool afkWarning = false;
+  int afkRemaining = 0;
+  bool shouldExit = false;
   MatchInfo? match;
   String? roomCode;
   MatchError? failure;
   bool rematching = false;
 
   RaceMode _mode = RaceMode.quick(Difficulty.beginner, RaceRule.speed);
+  RaceMode get mode => _mode;
   GameState _lastState = GameState.ready;
   DateTime _lastReport = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _countdown;
+  bool _disposed = false;
 
-  // ── 진행률/점수 (Swift RaceViewModel 이식) ──
+  // ── 진행률/점수 ──
   double get myProgress {
     final total = game.rows * game.cols - game.difficulty.mineCount;
     if (total <= 0) return 0;
@@ -74,23 +92,31 @@ class RaceController extends ChangeNotifier {
       ? _mineRatio(opponentScore)
       : opponent.progress;
 
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
   // ── 시작 ──
   void start(RaceMode mode) {
     _mode = mode;
     flow = RaceFlow.searching;
     result = null;
     opponentLeft = false;
+    afkWarning = false;
+    shouldExit = false;
     roomCode = null;
     failure = null;
     opponent = OpponentStatus();
-    notifyListeners();
+    _notify();
     _matchInfo(mode).then((info) {
+      if (_disposed) return;
       match = info;
       game.difficulty = info.difficulty;
       _beginStartCountdown(info);
     }).catchError((Object e) {
+      if (_disposed || e == MatchError.cancelled) return;
       failure = e is MatchError ? e : MatchError.roomNotFound;
-      notifyListeners();
+      _notify();
     });
   }
 
@@ -106,21 +132,25 @@ class RaceController extends ChangeNotifier {
     }
   }
 
+  /// 매칭 직후 — 3→2→1 카운트다운 후 실제 레이스(보드는 그 뒤에 만들어 타이머가 0부터).
   void _beginStartCountdown(MatchInfo info) {
     _countdown?.cancel();
     flow = RaceFlow.starting;
     startCountdown = 3;
     Haptics.tap();
-    notifyListeners();
+    _notify();
+    var n = 3;
+    Haptics.tap();
     _countdown = Timer.periodic(const Duration(milliseconds: 800), (t) {
-      startCountdown -= 1;
-      if (startCountdown <= 0) {
+      n -= 1;
+      if (n <= 0) {
         t.cancel();
         _beginRace(info);
-      } else {
-        Haptics.tap();
+        return;
       }
-      notifyListeners();
+      startCountdown = n;
+      Haptics.tap();
+      _notify();
     });
   }
 
@@ -136,17 +166,18 @@ class RaceController extends ChangeNotifier {
     _lastState = game.state;
     flow = RaceFlow.racing;
     service.beginRace();
-    notifyListeners();
+    _startAfkTimer();
+    _notify();
   }
 
   // ── 재대결 ──
+  /// 코드로 만난 상대(host/join)는 같은 상대와 자동 재대결, 랜덤/봇은 새로 매칭.
   void rematch() {
-    // 방/코드/봇은 같은 상대로 새 판(service.rematch), 랜덤은 새로 매칭.
-    if (_mode.kind == RaceModeKind.quick) {
+    if (_mode.kind == RaceModeKind.host || _mode.kind == RaceModeKind.join) {
+      _startRematch();
+    } else {
       service.leave();
       start(_mode);
-    } else {
-      _startRematch();
     }
   }
 
@@ -155,31 +186,39 @@ class RaceController extends ChangeNotifier {
     rematching = true;
     result = null;
     opponentLeft = false;
+    afkWarning = false;
+    shouldExit = false;
+    roomCode = null;
     failure = null;
     opponent = OpponentStatus();
-    notifyListeners();
+    _notify();
     service.rematch().then((info) {
+      if (_disposed) return;
       match = info;
       rematching = false;
       game.difficulty = info.difficulty;
       _beginStartCountdown(info);
     }).catchError((Object e) {
+      if (_disposed) return;
       rematching = false;
       if (e != MatchError.cancelled) {
         failure = e is MatchError ? e : MatchError.opponentLeft;
       }
-      notifyListeners();
+      _notify();
     });
   }
 
   void leave() {
     _countdown?.cancel();
+    _stopAfkTimer();
     service.leave();
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _countdown?.cancel();
+    _afkTimer?.cancel();
     game.removeListener(_onGameChanged);
     game.dispose();
     super.dispose();
@@ -187,7 +226,7 @@ class RaceController extends ChangeNotifier {
 
   // ── 로컬 게임 변화 ──
   void _onGameChanged() {
-    notifyListeners();
+    _notify();
     _reportProgress();
     if (game.state != _lastState) {
       _lastState = game.state;
@@ -200,11 +239,9 @@ class RaceController extends ChangeNotifier {
     if (state == GameState.won) {
       service.report(
           progress: 1, phase: RacerPhase.won, elapsed: game.elapsed, score: myScore);
-      if (game.rule == RaceRule.score) {
-        _finish(_scoreResult(myScore, opponentScore));
-      } else {
-        _finish(RaceResult.win);
-      }
+      _finish(game.rule == RaceRule.score
+          ? _scoreResult(myScore, opponentScore)
+          : RaceResult.win);
     } else if (state == GameState.lost) {
       service.report(
           progress: myProgress,
@@ -221,6 +258,7 @@ class RaceController extends ChangeNotifier {
     return RaceResult.draw;
   }
 
+  /// 진행률 보고는 최소 0.5초 간격(쓰기 절약). 승/패는 _handleLocal에서 즉시.
   void _reportProgress() {
     if (flow != RaceFlow.racing || result != null) return;
     final now = DateTime.now();
@@ -235,15 +273,13 @@ class RaceController extends ChangeNotifier {
 
   void _handleOpponent(OpponentStatus status) {
     opponent = status;
-    notifyListeners();
+    _notify();
     if (flow != RaceFlow.racing || result != null) return;
-    if (game.rule == RaceRule.coop) return; // 합동은 공유 보드로 판정
+    if (game.rule == RaceRule.coop) return; // 합동은 공유 보드로 직접 판정
     if (status.phase == RacerPhase.won) {
-      if (game.rule == RaceRule.score) {
-        _finish(_scoreResult(myScore, opponentScore));
-      } else {
-        _finish(RaceResult.lose);
-      }
+      _finish(game.rule == RaceRule.score
+          ? _scoreResult(myScore, opponentScore)
+          : RaceResult.lose);
     }
   }
 
@@ -253,9 +289,71 @@ class RaceController extends ChangeNotifier {
     _finish(game.rule == RaceRule.coop ? RaceResult.lose : RaceResult.win);
   }
 
+  // ── 자리비움(AFK) 항복: 30초 무조작 → 경고, 120초 → 항복 ──
+  Timer? _afkTimer;
+  DateTime _lastActivity = DateTime.now();
+  static const _afkWarn = Duration(seconds: 30);
+  static const _afkForfeit = Duration(seconds: 120);
+
+  void _startAfkTimer() {
+    _lastActivity = DateTime.now();
+    afkWarning = false;
+    _afkTimer?.cancel();
+    _afkTimer = Timer.periodic(const Duration(seconds: 1), (_) => _checkAfk());
+  }
+
+  void _stopAfkTimer() {
+    _afkTimer?.cancel();
+    _afkTimer = null;
+    afkWarning = false;
+  }
+
+  void _registerActivity() {
+    _lastActivity = DateTime.now();
+    if (afkWarning) {
+      afkWarning = false;
+      _notify();
+    }
+  }
+
+  /// 경고 배너 "계속하기".
+  void stayActive() => _registerActivity();
+
+  /// 백그라운드에 있던 시간은 자리비움으로 세지 않는다.
+  void setSceneActive(bool active) {
+    if (flow != RaceFlow.racing || result != null) return;
+    active ? _startAfkTimer() : _stopAfkTimer();
+  }
+
+  void _checkAfk() {
+    if (flow != RaceFlow.racing || result != null) {
+      _stopAfkTimer();
+      return;
+    }
+    final idle = DateTime.now().difference(_lastActivity);
+    if (idle >= _afkForfeit) {
+      _forfeitByAfk();
+    } else if (idle >= _afkWarn) {
+      afkRemaining = ((_afkForfeit - idle).inMilliseconds / 1000).ceil();
+      afkWarning = true;
+      _notify();
+    }
+  }
+
+  void _forfeitByAfk() {
+    if (flow != RaceFlow.racing || result != null) return;
+    _stopAfkTimer();
+    LocalStore.maybe?.recordRace(RaceResult.lose); // 항복 = 패배
+    service.leave(); // 상대 부전승
+    shouldExit = true;
+    _notify();
+  }
+
   void _finish(RaceResult r) {
+    _stopAfkTimer();
     result = r;
     flow = RaceFlow.finished;
+    LocalStore.maybe?.recordRace(r); // 대전 전적(승/패/무)
     switch (r) {
       case RaceResult.win:
         Haptics.success();
@@ -264,6 +362,6 @@ class RaceController extends ChangeNotifier {
       case RaceResult.draw:
         Haptics.warning();
     }
-    notifyListeners();
+    _notify();
   }
 }

@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../core/local_store.dart';
-
 /// 일일 도전과제 — Swift DailyChallenge 이식. 매일 풀에서 결정적으로 3개가 뽑히고,
 /// 목표를 채우면 코인을 준다(장기 업적과 달리 매일 갱신 + '받기' 수령).
-/// 진행/수령/롤오버 저장은 LocalStore, 카탈로그는 여기(순수 데이터 + 결정적 forDay).
+/// 진행/수령/롤오버 저장은 LocalStore(Swift RankingStore), 카탈로그는 여기(순수 데이터 + 결정적 forDay).
 
 /// 미션 종류. name(rawValue)이 진행/수령 저장 키다 — 바꾸지 않는다.
 enum DailyKind { clears, raceWins, golden, draws, touch }
@@ -49,38 +47,5 @@ class DailyChallenge {
       h = (h * 16777619) & 0xFFFFFFFF;
     }
     return h;
-  }
-}
-
-/// 일일 진행 헬퍼 — 게임 이벤트에서 호출. 오늘 뽑힌 미션에 그 kind가 있을 때만 누적.
-class Daily {
-  static void bump(DailyKind kind, {int by = 1}) {
-    if (by <= 0) return;
-    final today = LocalStore.todayKey();
-    if (!DailyChallenge.forDay(today).any((c) => c.kind == kind)) return;
-    LocalStore.shared.bumpDaily(kind.name, by);
-  }
-
-  /// (현재값, 목표, 달성, 수령).
-  static ({int current, int target, bool done, bool claimed}) state(
-      DailyKind kind) {
-    final c = DailyChallenge.named(kind);
-    final cur = LocalStore.shared.dailyProgress(kind.name).clamp(0, c.goal);
-    return (
-      current: cur,
-      target: c.goal,
-      done: cur >= c.goal,
-      claimed: LocalStore.shared.isDailyClaimed(kind.name),
-    );
-  }
-
-  /// 보상 수령 — 달성했고 미수령이면 코인 지급 + 수령 처리. 받은 코인 반환(불가면 null).
-  static int? claim(DailyKind kind) {
-    final s = state(kind);
-    if (!s.done || s.claimed) return null;
-    final reward = DailyChallenge.named(kind).reward;
-    LocalStore.shared.markDailyClaimed(kind.name);
-    LocalStore.shared.addCoins(reward);
-    return reward;
   }
 }

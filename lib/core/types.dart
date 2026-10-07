@@ -1,3 +1,5 @@
+import 'dart:math';
+
 // 세 게임 모델이 공유하는 값 타입들. Swift의 흩어진 enum/struct를 한곳에 모았다.
 
 /// 게임 진행 상태
@@ -41,4 +43,18 @@ enum GachaItem {
 
   /// 균등 분포 뽑기 확률(%). 합이 100이 되도록 case 수로 나눈다.
   double get drawPercent => 100.0 / GachaItem.values.length;
+
+  /// 확률(`drawPercent`)에 비례해 아이템 1개를 무작위로 뽑는다.
+  static GachaItem weightedRandom([Random? rng]) {
+    final total = values.fold<double>(0, (a, b) => a + b.drawPercent);
+    var r = (rng ?? Random()).nextDouble() * total;
+    for (final it in values) {
+      if (r < it.drawPercent) return it;
+      r -= it.drawPercent;
+    }
+    return values.last;
+  }
 }
+
+/// 레이스 결과
+enum RaceResult { win, lose, draw }

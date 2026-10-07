@@ -1,10 +1,46 @@
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../core/game_model.dart';
+import '../core/haptics.dart';
 import '../core/theme.dart';
 import '../core/types.dart';
 
-/// 한 칸 렌더링 — Swift CellView 이식. 원본 팔레트(무채색 적응) 사용.
+/// 0.3초 길게 누르기 — SwiftUI `.onLongPressGesture(minimumDuration:)` 대응.
+class LongPressTap extends StatelessWidget {
+  const LongPressTap(
+      {super.key,
+      required this.child,
+      this.onTap,
+      this.onLongPress,
+      this.duration = const Duration(milliseconds: 300)});
+  final Widget child;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final Duration duration;
+
+  @override
+  Widget build(BuildContext context) {
+    return RawGestureDetector(
+      behavior: HitTestBehavior.opaque,
+      gestures: {
+        TapGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+                TapGestureRecognizer.new, (r) => r.onTap = onTap),
+        LongPressGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+                () => LongPressGestureRecognizer(duration: duration),
+                (r) => r.onLongPress = onLongPress),
+      },
+      child: child,
+    );
+  }
+}
+
+/// 한 칸 렌더링 — Swift CellView 이식.
+/// 일반 모드: 탭=열기, 길게=깃발 / 깃발 모드: 탭=깃발(열린 숫자는 일괄 열기), 길게=열기.
+/// 자동깃발 발동 대기(probing)면 어떤 탭이든 onProbe로 보낸다.
 class CellView extends StatelessWidget {
   const CellView({
     super.key,
@@ -24,36 +60,37 @@ class CellView extends StatelessWidget {
   final double size;
   final VoidCallback onReveal;
   final VoidCallback onFlag;
-  final bool probing; // 자동깃발 발동 대기 — 숫자 칸 탭이 자동깃발로 감
+  final bool probing;
   final VoidCallback? onProbe;
 
-  static const _gold = Color(0xFFF2BC2E);
+  static const _goldFlag = Color.fromRGBO(242, 189, 46, 1); // (0.95,0.74,0.18)
+
+  void _flag() {
+    Haptics.flagTap();
+    onFlag();
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return LongPressTap(
       onTap: () {
-        // 자동깃발 발동 중: 숫자 칸(열린 비지뢰)을 탭하면 자동깃발.
-        if (probing &&
-            cell.isRevealed &&
-            !cell.isMine &&
-            cell.adjacent > 0 &&
-            onProbe != null) {
-          onProbe!();
-        } else if (flagMode && !cell.isRevealed) {
-          onFlag();
+        if (probing) {
+          onProbe?.call();
+          return;
+        }
+        if (flagMode) {
+          cell.isRevealed ? onReveal() : _flag();
         } else {
           onReveal();
         }
       },
       onLongPress: () {
-        if (flagMode) {
-          onReveal();
-        } else {
-          onFlag();
+        if (probing) {
+          onProbe?.call();
+          return;
         }
+        flagMode ? onReveal() : _flag();
       },
       child: Container(
         width: size,
@@ -90,12 +127,20 @@ class CellView extends StatelessWidget {
       if (gameEnded && !cell.isMine) {
         return Text('❌', style: TextStyle(fontSize: unit * 0.5));
       }
-      if (cell.flagOwner != null) {
-        return Icon(Icons.flag,
-            size: unit * 0.6, color: _flagColor(cell.flagOwner!));
+      final owner = cell.flagOwner;
+      if (owner != null) {
+        return Icon(CupertinoIcons.flag_fill,
+            size: unit * 0.55,
+            color: owner == FlagOwner.me ? AppTheme.meColor : AppTheme.oppColor);
       }
       if (cell.isGolden) {
-        return Icon(Icons.flag, size: unit * 0.6, color: _gold);
+        return Icon(CupertinoIcons.flag_fill,
+            size: unit * 0.55,
+            color: _goldFlag,
+            shadows: [
+              Shadow(
+                  color: _goldFlag.withValues(alpha: 0.7), blurRadius: unit * 0.12)
+            ]);
       }
       return Text('🚩', style: TextStyle(fontSize: unit * 0.5));
     }
@@ -109,7 +154,8 @@ class CellView extends StatelessWidget {
           '${cell.adjacent}',
           style: TextStyle(
             fontSize: unit * 0.58,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w900,
+            height: 1.0,
             color: minesweeperNumberColor(cell.adjacent, dark),
           ),
         );
@@ -117,7 +163,4 @@ class CellView extends StatelessWidget {
     }
     return null;
   }
-
-  Color _flagColor(FlagOwner owner) =>
-      owner == FlagOwner.me ? AppTheme.meColor : AppTheme.oppColor;
 }

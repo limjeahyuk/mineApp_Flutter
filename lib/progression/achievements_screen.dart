@@ -1,14 +1,16 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' hide Title;
 
+import '../core/haptics.dart';
 import '../core/local_store.dart';
 import '../core/theme.dart';
+import '../core/ui.dart';
 import 'daily.dart';
 import 'title.dart';
 
-/// 업적 화면 — 도전과제(진행/달성) + 칭호(장착·구매). Swift AchievementsView 이식.
-///
-/// 일일 도전과제(daily.dart)는 도전과제 탭 상단에 노출. 테마 조건 칭호만 미이식
-/// (테마 목표는 항상 잠금 표시). 나머지 통계 기반 업적은 정상 평가.
+enum _Tab { challenges, titles }
+
+/// 업적 시트 — Swift AchievementsView 이식. 도전과제(오늘의 도전과제 + 장기 업적) / 칭호(착용·구매).
 class AchievementsScreen extends StatefulWidget {
   const AchievementsScreen({super.key});
 
@@ -17,478 +19,433 @@ class AchievementsScreen extends StatefulWidget {
 }
 
 class _AchievementsScreenState extends State<AchievementsScreen> {
-  final LocalStore _s = LocalStore.shared;
-  int _tab = 0; // 0=도전과제, 1=칭호
+  final store = LocalStore.shared;
+  _Tab tab = _Tab.challenges;
+  final _toast = GlobalKey<ToastHostState>();
+
+  static const goldAccent = Color.fromRGBO(245, 194, 61, 1); // (0.96,0.76,0.24)
 
   @override
   void initState() {
     super.initState();
-    refreshAchievements(); // 진입 시 달성분 해금
+    // 진입 시 최신 평가(누락분 해금, 배너 없이) + 자정 넘겼으면 일일 갱신.
+    store.refreshAchievements(announce: false);
+    store.refreshDailyRewards();
   }
 
-  void _toast(String msg) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-          SnackBar(content: Text(msg), duration: const Duration(seconds: 1)));
-  }
+  void _showToast(String m) => _toast.currentState?.show(m);
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    return Scaffold(
-      backgroundColor: t.bg,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _header(t),
-            const SizedBox(height: 8),
-            _segment(t),
-            const SizedBox(height: 8),
-            Expanded(
-                child: _tab == 0 ? _challengesTab(t) : _titlesTab(t)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _header(AppTheme t) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 16, 0),
-      child: Row(
-        children: [
-          Material(
-            color: t.fill,
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: () => Navigator.of(context).pop(),
-              child: SizedBox(
-                  width: 40,
-                  height: 40,
-                  child: Icon(Icons.close, color: t.textSecondary, size: 20)),
-            ),
+    return SheetScaffold(
+      title: '업적',
+      child: ToastHost(
+        key: _toast,
+        child: ListenableBuilder(
+          listenable: store,
+          builder: (_, _) => Padding(
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+            child: Column(children: [
+              SizedBox(
+                width: double.infinity,
+                child: CupertinoSlidingSegmentedControl<_Tab>(
+                  groupValue: tab,
+                  children: {
+                    for (final (v, l) in const [(_Tab.challenges, '도전과제'), (_Tab.titles, '칭호')])
+                      v: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Text(l,
+                            style: TextStyle(
+                                color: t.text, fontSize: 13, fontWeight: FontWeight.w600)),
+                      ),
+                  },
+                  onValueChanged: (v) => setState(() => tab = v ?? tab),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: tab == _Tab.challenges ? _challenges(t) : _titles(t),
+                ),
+              ),
+            ]),
           ),
-          Expanded(
-            child: Text('업적',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    color: t.text, fontSize: 20, fontWeight: FontWeight.w800)),
-          ),
-          const SizedBox(width: 40),
-        ],
-      ),
-    );
-  }
-
-  Widget _segment(AppTheme t) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-          color: t.fill, borderRadius: BorderRadius.circular(13)),
-      child: Row(
-        children: [
-          _segBtn(t, 0, '도전과제'),
-          _segBtn(t, 1, '칭호'),
-        ],
-      ),
-    );
-  }
-
-  Widget _segBtn(AppTheme t, int idx, String label) {
-    final selected = _tab == idx;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _tab = idx),
-        child: Container(
-          height: 38,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-              color: selected ? AppTheme.soloAccent : Colors.transparent,
-              borderRadius: BorderRadius.circular(9)),
-          child: Text(label,
-              style: TextStyle(
-                  color: selected ? Colors.white : t.textSecondary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold)),
         ),
       ),
     );
   }
 
-  // ── 도전과제 탭 (위: 오늘의 일일, 아래: 장기 업적) ──
-  static const _gold = Color(0xFFF5C23D); // (0.96,0.76,0.24)
+  Widget _coinLabel(AppTheme t) => Row(mainAxisSize: MainAxisSize.min, children: [
+        const GoldenMineIcon(size: 13),
+        const SizedBox(width: 4),
+        Text(fmt(store.coins),
+            style: TextStyle(color: t.textSecondary, fontSize: 13, fontWeight: FontWeight.bold)),
+      ]);
 
-  Widget _challengesTab(AppTheme t) {
-    final list = Title.achievements;
-    final done = list.where((x) => _s.isTitleOwned(x.id)).length;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-      children: [
-        _dailySection(t),
-        const SizedBox(height: 20),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10, left: 2),
-          child: Text('업적 · 달성 $done / 전체 ${list.length}',
-              style: TextStyle(
-                  color: t.textSecondary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600)),
-        ),
-        for (var i = 0; i < list.length; i++) ...[
-          if (i > 0) const SizedBox(height: 10),
-          _challengeRow(t, list[i]),
-        ],
-      ],
-    );
-  }
+  Widget _header(AppTheme t, String s, {Widget? trailing}) => Row(children: [
+        Text(s,
+            style: TextStyle(color: t.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
+        const Spacer(),
+        ?trailing,
+      ]);
 
-  Widget _dailySection(AppTheme t) {
-    final today = DailyChallenge.forDay(LocalStore.todayKey());
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text('오늘의 도전과제',
-                style: TextStyle(
-                    color: t.textSecondary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600)),
-            const Spacer(),
-            const Text('🪙', style: TextStyle(fontSize: 13)),
-            const SizedBox(width: 4),
-            Text('${_s.coins}',
-                style: TextStyle(
-                    color: t.textSecondary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold)),
-          ],
-        ),
+  BoxDecoration _rowBox(AppTheme t) => BoxDecoration(
+      color: t.fill.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(14));
+
+  Widget _iconCircle(IconData icon, Color tint, Color iconColor, {double size = 44}) =>
+      Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: tint.withValues(alpha: 0.16), shape: BoxShape.circle),
+        child: Icon(icon, size: size * 0.42, color: iconColor),
+      );
+
+  Widget _bar(AppTheme t, double f, Color color) => LayoutBuilder(
+        builder: (_, b) => Stack(children: [
+          Container(
+              height: 6,
+              decoration:
+                  BoxDecoration(color: t.fill, borderRadius: BorderRadius.circular(100))),
+          Container(
+              height: 6,
+              width: f.clamp(0.0, 1.0) * b.maxWidth,
+              decoration:
+                  BoxDecoration(color: color, borderRadius: BorderRadius.circular(100))),
+        ]),
+      );
+
+  Widget _rarityTag(TitleRarity r) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+            color: r.color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(100)),
+        child: Text(r.label,
+            style: TextStyle(color: r.color, fontSize: 9, fontWeight: FontWeight.bold)),
+      );
+
+  // MARK: 도전과제 탭
+
+  Widget _challenges(AppTheme t) => Column(children: [
+        _header(t, '오늘의 도전과제', trailing: _coinLabel(t)),
         const SizedBox(height: 10),
-        for (var i = 0; i < today.length; i++) ...[
-          if (i > 0) const SizedBox(height: 10),
-          _dailyRow(t, today[i]),
-        ],
-        const SizedBox(height: 8),
-        Text('매일 자정에 새로 갱신돼요. 달성하면 코인을 받을 수 있어요.',
-            style: TextStyle(color: t.textTertiary, fontSize: 11)),
-      ],
-    );
-  }
+        for (final c in store.todaysChallenges()) ...[_dailyRow(t, c), const SizedBox(height: 10)],
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text('매일 자정에 새로 갱신돼요. 달성하면 코인을 받을 수 있어요.',
+              style: TextStyle(color: t.textTertiary, fontSize: 11)),
+        ),
+        const SizedBox(height: 20),
+        _achievementsList(t),
+      ]);
 
   Widget _dailyRow(AppTheme t, DailyChallenge c) {
-    final s = Daily.state(c.kind);
+    final s = store.dailyState(c.kind);
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-          color: t.fill.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(14)),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-                color: (s.done ? _gold : t.textSecondary).withValues(alpha: 0.16),
-                shape: BoxShape.circle),
-            child: Icon(c.icon,
-                size: 20, color: s.done ? _gold : t.textSecondary),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(c.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        color: t.text,
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold)),
-                const SizedBox(height: 6),
-                if (s.claimed)
-                  Row(
-                    children: [
-                      Icon(Icons.verified, size: 13, color: t.textTertiary),
-                      const SizedBox(width: 4),
-                      Text('보상을 받았어요',
-                          style: TextStyle(
-                              color: t.textTertiary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600)),
-                    ],
-                  )
-                else ...[
-                  _progressBar(t, s.current, s.target, s.done, _gold),
-                  const SizedBox(height: 4),
-                  Text('${s.current} / ${s.target}',
-                      style: TextStyle(
-                          color: t.textTertiary,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600)),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          _dailyTrailing(t, c, s),
-        ],
-      ),
-    );
-  }
-
-  Widget _dailyTrailing(AppTheme t, DailyChallenge c,
-      ({int current, int target, bool done, bool claimed}) s) {
-    if (s.claimed) {
-      return Icon(Icons.check_circle,
-          size: 22, color: _gold.withValues(alpha: 0.55));
-    }
-    if (s.done) {
-      return GestureDetector(
-        onTap: () => _claimDaily(c),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-          decoration:
-              BoxDecoration(color: _gold, borderRadius: BorderRadius.circular(20)),
-          child: Text('받기 +${c.reward}',
-              style: const TextStyle(
-                  color: Color(0xFF402900),
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold)),
-        ),
-      );
-    }
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Text('🪙', style: TextStyle(fontSize: 12)),
-        const SizedBox(width: 3),
-        Text('+${c.reward}',
-            style: TextStyle(
-                color: t.textTertiary,
-                fontSize: 12,
-                fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-
-  void _claimDaily(DailyChallenge c) {
-    final reward = Daily.claim(c.kind);
-    if (reward != null) {
-      _toast('🪙 $reward 코인을 받았어요!');
-      setState(() {});
-    }
-  }
-
-  Widget _challengeRow(AppTheme t, Title title) {
-    final owned = _s.isTitleOwned(title.id);
-    final p = goalProgress(title.source.goal!);
-    final locked = title.hidden && !owned;
-    final name = locked ? '???' : title.name;
-    final hint = locked ? '히든 업적' : title.hint;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: t.fill,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-            color: owned
-                ? title.rarity.color.withValues(alpha: 0.45)
-                : Colors.transparent),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-                color: (owned ? title.rarity.color : t.textSecondary)
-                    .withValues(alpha: 0.16),
-                shape: BoxShape.circle),
-            child: Icon(title.rarity.icon,
-                color: owned ? title.rarity.color : t.textSecondary, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              color: t.text,
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(width: 6),
-                    if (owned)
-                      Icon(Icons.check_circle,
-                          color: title.rarity.color, size: 16),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Text(hint,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: t.textSecondary, fontSize: 12)),
-                const SizedBox(height: 8),
-                _progressBar(t, p.current, p.target, owned, title.rarity.color),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _progressBar(
-      AppTheme t, int current, int target, bool done, Color color) {
-    final ratio = target == 0 ? 0.0 : (current / target).clamp(0.0, 1.0);
-    return Row(
-      children: [
+      decoration: _rowBox(t),
+      child: Row(children: [
+        _iconCircle(c.icon, s.done ? goldAccent : Colors.grey,
+            s.done ? goldAccent : t.textSecondary),
+        const SizedBox(width: 12),
         Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: done ? 1 : ratio,
-              minHeight: 6,
-              backgroundColor: t.fillElevated,
-              valueColor: AlwaysStoppedAnimation(done ? color : t.textSecondary),
-            ),
-          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(c.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: t.text, fontSize: 15, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 5),
+            if (s.claimed)
+              Row(children: [
+                Icon(CupertinoIcons.checkmark_seal_fill, size: 12, color: t.textTertiary),
+                const SizedBox(width: 4),
+                Text('보상을 받았어요',
+                    style: TextStyle(
+                        color: t.textTertiary, fontSize: 12, fontWeight: FontWeight.w600)),
+              ])
+            else ...[
+              _bar(t, s.target > 0 ? s.current / s.target : 0, goldAccent),
+              const SizedBox(height: 5),
+              Text('${s.current} / ${s.target}',
+                  style: TextStyle(
+                      color: t.textTertiary, fontSize: 11, fontWeight: FontWeight.w600)),
+            ],
+          ]),
         ),
         const SizedBox(width: 8),
-        Text(done ? '달성' : '$current/$target',
-            style: TextStyle(
-                color: done ? color : t.textTertiary,
-                fontSize: 11,
-                fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-
-  // ── 칭호 탭 ──
-  Widget _titlesTab(AppTheme t) {
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-      itemCount: Title.all.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (_, i) => _titleRow(t, Title.all[i]),
-    );
-  }
-
-  Widget _titleRow(AppTheme t, Title title) {
-    final owned = _s.isTitleOwned(title.id);
-    final equipped = _s.equippedTitleId == title.id;
-    final locked = title.hidden && !owned;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: t.fill,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-            color: equipped
-                ? title.rarity.color
-                : (owned
-                    ? title.rarity.color.withValues(alpha: 0.35)
-                    : Colors.transparent),
-            width: equipped ? 2 : 1),
-      ),
-      child: Row(
-        children: [
-          Icon(title.rarity.icon,
-              color: owned ? title.rarity.color : t.textSecondary, size: 22),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(locked ? '???' : title.name,
-                    style: TextStyle(
-                        color: owned ? t.text : t.textSecondary,
-                        fontSize: 15,
+        if (s.claimed)
+          Icon(CupertinoIcons.checkmark_circle_fill,
+              size: 22, color: goldAccent.withValues(alpha: 0.55))
+        else if (s.done)
+          Pressable(
+            onTap: () {
+              final r = store.claimDaily(c.kind);
+              if (r == null) return;
+              Haptics.success();
+              _showToast('일일 보상 +$r 코인을 받았어요!');
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+              decoration: BoxDecoration(
+                  color: goldAccent, borderRadius: BorderRadius.circular(100)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const GoldenMineIcon(size: 13),
+                const SizedBox(width: 3),
+                Text('받기 +${c.reward}',
+                    style: const TextStyle(
+                        color: Color.fromRGBO(64, 41, 0, 1),
+                        fontSize: 13,
                         fontWeight: FontWeight.bold)),
-                const SizedBox(height: 2),
-                Text('${title.rarity.label} · ${locked ? "히든" : title.hint}',
+              ]),
+            ),
+          )
+        else
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            const GoldenMineIcon(size: 12),
+            const SizedBox(width: 3),
+            Text('+${c.reward}',
+                style: TextStyle(
+                    color: t.textTertiary, fontSize: 12, fontWeight: FontWeight.bold)),
+          ]),
+      ]),
+    );
+  }
+
+  Widget _achievementsList(AppTheme t) {
+    final all = Title.achievements;
+    final done = all.where((x) => store.owns(x.id)).length;
+    return Column(children: [
+      _header(t, '업적 · 달성 $done / 전체 ${all.length}'),
+      const SizedBox(height: 10),
+      for (final x in all) ...[_achievementRow(t, x), const SizedBox(height: 10)],
+    ]);
+  }
+
+  Widget _achievementRow(AppTheme t, Title x) {
+    final done = store.owns(x.id);
+    final masked = x.hidden && !done;
+    final accent = done ? x.rarity.color : t.textSecondary;
+    final goal = x.goal;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: _rowBox(t),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _iconCircle(
+            masked
+                ? CupertinoIcons.question
+                : (done ? CupertinoIcons.checkmark : CupertinoIcons.rosette),
+            done ? x.rarity.color : Colors.grey,
+            accent),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Flexible(
+                child: Text(masked ? '???' : x.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: t.textTertiary, fontSize: 11)),
-              ],
-            ),
+                    style: TextStyle(color: t.text, fontSize: 15, fontWeight: FontWeight.bold)),
+              ),
+              if (!masked) ...[const SizedBox(width: 6), _rarityTag(x.rarity)],
+              const Spacer(),
+              if (done)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(CupertinoIcons.checkmark_seal_fill, size: 11, color: x.rarity.color),
+                  const SizedBox(width: 3),
+                  Text('획득',
+                      style: TextStyle(
+                          color: x.rarity.color, fontSize: 11, fontWeight: FontWeight.bold)),
+                ]),
+            ]),
+            const SizedBox(height: 4),
+            Text(masked ? '히든 업적 · 숨겨진 조건을 달성하면 공개돼요' : x.hint,
+                maxLines: 2,
+                style: TextStyle(color: t.textSecondary, fontSize: 12)),
+            if (!done && !masked && goal != null) ...[
+              const SizedBox(height: 4),
+              () {
+                final p = store.goalProgress(goal);
+                return _bar(t, p.target > 0 ? p.current / p.target : 0, x.rarity.color);
+              }(),
+              const SizedBox(height: 4),
+              Text(store.goalDisplay(goal),
+                  style: TextStyle(
+                      color: t.textTertiary, fontSize: 11, fontWeight: FontWeight.w600)),
+            ],
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  // MARK: 칭호 탭
+
+  Widget _titles(AppTheme t) => Column(children: [
+        _header(t, '내 칭호', trailing: _coinLabel(t)),
+        const SizedBox(height: 12),
+        _previewCard(t),
+        const SizedBox(height: 12),
+        for (final x in Title.all) ...[_titleRow(t, x), const SizedBox(height: 12)],
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+              '도전과제를 깨거나 코인으로 칭호를 얻고, 탭하면 착용돼요. 착용한 칭호는 대전·랭킹에서 이름 밑에 보여요.',
+              style: TextStyle(color: t.textTertiary, fontSize: 11)),
+        ),
+      ]);
+
+  Widget _previewCard(AppTheme t) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(color: t.fill, borderRadius: BorderRadius.circular(16)),
+        child: Column(children: [
+          Text('이렇게 보여요',
+              style: TextStyle(
+                  color: t.textSecondary, fontSize: 11, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Text(store.nickname,
+              style: TextStyle(color: t.text, fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          if (store.equippedTitleName.isEmpty)
+            Text('칭호 미착용', style: TextStyle(color: t.textTertiary, fontSize: 12))
+          else ...[
+            TitleBadge(name: store.equippedTitleName, size: 11),
+            const SizedBox(height: 8),
+            TextLink('칭호 떼기',
+                fontSize: 12,
+                weight: FontWeight.w600,
+                onTap: () {
+                  store.equip(null);
+                  Haptics.tap();
+                }),
+          ],
+        ]),
+      );
+
+  String _sourceText(Title x) => switch (x.source.kind) {
+        TitleSourceKind.starter => '${x.rarity.label} · 기본 제공',
+        TitleSourceKind.achievement => '${x.rarity.label} · 도전과제 보상 — ${x.hint}',
+        TitleSourceKind.purchase => '${x.rarity.label} · 코인 구매',
+      };
+
+  Widget _titleRow(AppTheme t, Title x) {
+    final state = store.titleState(x);
+    final owned = state is TitleEquipped || state is TitleOwned;
+    final masked = x.hidden && !owned;
+    final equipped = state is TitleEquipped;
+    Widget trailing = switch (state) {
+      TitleEquipped() => Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(CupertinoIcons.checkmark_circle_fill, size: 13, color: t.text),
+          const SizedBox(width: 3),
+          Text('착용 중',
+              style: TextStyle(color: t.text, fontSize: 12, fontWeight: FontWeight.bold)),
+        ]),
+      TitleOwned() => Text('착용',
+          style: TextStyle(color: t.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+      TitlePurchasable(:final cost, :final affordable) =>
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          const GoldenMineIcon(size: 12),
+          const SizedBox(width: 3),
+          Text(fmt(cost),
+              style: TextStyle(
+                  color: affordable ? t.text : t.textTertiary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold)),
+        ]),
+      TitleLocked() => Icon(CupertinoIcons.lock_fill, size: 12, color: t.textTertiary),
+    };
+    return Pressable(
+      onTap: () => _tapTitle(x),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: equipped ? x.rarity.color.withValues(alpha: 0.14) : t.fill.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: equipped ? x.rarity.color.withValues(alpha: 0.6) : Colors.transparent,
+              width: 1.2),
+        ),
+        child: Row(children: [
+          _iconCircle(
+              masked
+                  ? CupertinoIcons.question
+                  : (owned ? CupertinoIcons.rosette : CupertinoIcons.lock_fill),
+              owned ? x.rarity.color : Colors.grey,
+              owned ? x.rarity.color : t.textSecondary,
+              size: 40),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(
+                  child: Text(masked ? '???' : x.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: t.text, fontSize: 15, fontWeight: FontWeight.bold)),
+                ),
+                if (!masked) ...[const SizedBox(width: 6), _rarityTag(x.rarity)],
+              ]),
+              const SizedBox(height: 3),
+              Text(masked ? '히든 칭호' : _sourceText(x),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: t.textTertiary, fontSize: 11)),
+            ]),
           ),
           const SizedBox(width: 8),
-          _titleAction(t, title, owned, equipped),
-        ],
+          trailing,
+        ]),
       ),
     );
   }
 
-  Widget _titleAction(AppTheme t, Title title, bool owned, bool equipped) {
-    if (owned) {
-      return Material(
-        color: equipped ? t.fillElevated : title.rarity.color,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: equipped
-              ? null
-              : () {
-                  _s.equipTitle(title.id, title.name);
-                  setState(() {});
-                  _toast("'${title.name}' 장착");
-                },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            child: Text(equipped ? '장착됨' : '장착',
-                style: TextStyle(
-                    color: equipped ? t.textSecondary : Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold)),
-          ),
-        ),
-      );
+  void _tapTitle(Title x) {
+    switch (store.titleState(x)) {
+      case TitleEquipped():
+        store.equip(null); // 한 번 더 누르면 떼기
+        Haptics.tap();
+      case TitleOwned():
+        store.equip(x.id);
+        Haptics.tap();
+      case TitlePurchasable():
+        _confirmBuy(x);
+      case TitleLocked():
+        Haptics.warning();
+        _showToast(x.hidden ? '히든 칭호예요 · 숨겨진 조건을 달성하면 열려요' : '도전과제를 달성하면 열려요');
     }
-    final cost = title.purchaseCost;
-    if (cost != null) {
-      return Material(
-        color: AppTheme.soloAccent,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: () => _buy(title, cost),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Text('☀️ $cost',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold)),
-          ),
-        ),
-      );
-    }
-    // 업적으로 해금되는 잠긴 칭호
-    return Icon(Icons.lock, color: t.textTertiary, size: 18);
   }
 
-  void _buy(Title title, int cost) {
-    if (!_s.spendCoins(cost)) {
-      _toast('코인이 부족해요 ($cost 필요)');
-      return;
-    }
-    _s.unlockTitle(title.id);
-    _s.equipTitle(title.id, title.name);
-    setState(() {});
-    _toast("'${title.name}' 구매·장착 완료!");
+  void _confirmBuy(Title x) {
+    final cost = x.purchaseCost ?? 0;
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: const Text('칭호 구매'),
+        message: Text(
+            '‘${x.name}’ 칭호를 ${fmt(cost)}코인에 구매합니다.\n지금 ${fmt(store.coins)}코인 보유 중이에요.'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              if (store.coins < cost) {
+                Haptics.error();
+                _showToast('코인이 부족해요 · 상점에서 충전할 수 있어요');
+                return;
+              }
+              if (store.purchaseTitle(x.id)) {
+                Haptics.success();
+                _showToast('‘${x.name}’ 칭호를 착용했어요!');
+              }
+            },
+            child: Text('${fmt(cost)}코인에 구매'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('취소'),
+        ),
+      ),
+    );
   }
 }

@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
 import 'board.dart';
+import 'local_store.dart';
 import 'seeded_random.dart';
 import 'types.dart';
 
@@ -60,9 +62,6 @@ const List<List<int>> _offsets = [
   [1, -1], [1, 0], [1, 1],
 ];
 
-/// 최고 기록 저장소. Swift는 UserDefaults를 썼다.
-/// ponytail: UI 단계에서 shared_preferences로 교체. 지금은 인메모리라 앱 재시작 시 사라짐.
-final Map<String, int> _bestTimes = {};
 
 class GameModel extends ChangeNotifier {
   List<List<Cell>> grid = [];
@@ -722,19 +721,92 @@ class GameModel extends ChangeNotifier {
     return (diff, seed);
   }
 
-  int? bestTime(String code) {
-    final v = _bestTimes[_bestKey(code)];
-    return (v != null && v > 0) ? v : null;
-  }
-
-  static String _bestKey(String code) => 'best_$code';
+  /// 같은 코드 판의 내 최고 클리어 시간(초) — Swift UserDefaults `best_<code>`.
+  int? bestTime(String code) => LocalStore.maybe?.bestTimeForCode(code);
 
   void _recordWin() {
     final code = boardCode;
     if (code == null) return;
-    final key = _bestKey(code);
-    final prev = _bestTimes[key] ?? 0;
-    if (prev == 0 || elapsed < prev) _bestTimes[key] = elapsed;
+    LocalStore.maybe?.recordCodeWin(code, elapsed);
+  }
+
+  // MARK: - 이어하기(앱 종료/백그라운드 후 솔로 판 복원) — Swift SoloSnapshot
+
+  /// 솔로 + 스피드 + 진행 중일 때만 스냅샷(JSON 문자열). 칸 상태를 통째로 담는다.
+  String? makeResumeSnapshot() {
+    if (!_isSolo || rule != RaceRule.speed || shared) return null;
+    if (state != GameState.playing || seed == null) return null;
+    return jsonEncode({
+      'difficulty': difficulty.label,
+      'seed': seed,
+      'elapsed': elapsed,
+      'didContinue': _didContinue,
+      'usedItem': usedAutoFlagThisGame,
+      'cells': [
+        for (final row in grid)
+          for (final c in row)
+            {
+              'm': c.isMine,
+              'r': c.isRevealed,
+              'f': c.isFlagged,
+              'x': c.exploded,
+              'a': c.adjacent,
+              'g': c.isGolden,
+            }
+      ],
+    });
+  }
+
+  /// 저장된 스냅샷으로 그대로 복원하고 즉시 이어서 진행. 깨졌으면 새 판.
+  void restore(Map<String, dynamic> s) {
+    final diff = Difficulty.fromLabel(s['difficulty'] as String? ?? '');
+    final cells = s['cells'] as List?;
+    if (diff == null || cells == null || cells.length != diff.rows * diff.cols) {
+      newGame();
+      return;
+    }
+    _stopTimer();
+    _isReconfiguring = true;
+    difficulty = diff;
+    _isReconfiguring = false;
+    _isSolo = true;
+    rule = RaceRule.speed;
+    shared = false;
+    seed = (s['seed'] as num).toInt();
+    elapsed = (s['elapsed'] as num?)?.toInt() ?? 0;
+    _minesPlaced = true;
+    _resetReviveState();
+    _didContinue = s['didContinue'] as bool? ?? false;
+    usedAutoFlagThisGame = s['usedItem'] as bool? ?? true; // 구버전은 보수적으로 '사용'
+    autoFlagTickets = min(autoFlagSupplier(), soloAutoFlagCap(difficulty));
+    radarTickets = min(radarSupplier(), difficulty.radarCap);
+    soloWinResult = null;
+    final c = diff.cols;
+    grid = [
+      for (var r = 0; r < diff.rows; r++)
+        [
+          for (var col = 0; col < c; col++)
+            () {
+              final d = cells[r * c + col] as Map;
+              return Cell(r * c + col)
+                ..isMine = d['m'] == true
+                ..isRevealed = d['r'] == true
+                ..isFlagged = d['f'] == true
+                ..exploded = d['x'] == true
+                ..adjacent = (d['a'] as num?)?.toInt() ?? 0
+                ..isGolden = d['g'] == true;
+            }(),
+        ],
+    ];
+    // 이미 깃발이 꽂힌 황금지뢰는 '발견 완료'로 — 재보상 방지.
+    for (final row in grid) {
+      for (final cell in row) {
+        if (cell.isGolden && cell.isFlagged) _goldenAwarded.add(cell.id);
+      }
+    }
+    state = GameState.playing;
+    _startTimer();
+    notifyListeners();
   }
 
   // MARK: - 타이머

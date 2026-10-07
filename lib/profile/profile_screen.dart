@@ -1,19 +1,21 @@
 import 'dart:io';
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' hide Title;
 
 import '../core/account_auth.dart';
 import '../core/account_deletion.dart';
 import '../core/apple_auth.dart';
 import '../core/board.dart';
-import '../core/cloud_backup.dart';
 import '../core/google_auth.dart';
+import '../core/haptics.dart';
 import '../core/local_store.dart';
 import '../core/theme.dart';
+import '../core/ui.dart';
 import '../progression/title.dart';
 
-/// 내 정보 화면 — 닉네임(변경) + 장착 칭호 + 보유(코인·아이템) + 난이도별 솔로 기록 + 계정.
-/// Swift StartView.ProfileView 이식.
+/// 내 정보 시트 — Swift ProfileView 이식. 닉네임·칭호 / 보유 / 난이도별 기록 / 계정 연동 / 계정 삭제.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -22,412 +24,337 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final LocalStore _s = LocalStore.shared;
-  bool _busy = false;
-
-  Title? get _equippedTitle {
-    final id = _s.equippedTitleId;
-    for (final t in Title.all) {
-      if (t.id == id) return t;
-    }
-    return null;
-  }
-
-  Future<void> _editName() async {
-    final ctrl = TextEditingController(text: _s.nickname);
-    final t = AppTheme.of(context);
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: t.surface,
-        title: Text('닉네임 변경', style: TextStyle(color: t.text)),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          maxLength: 16,
-          style: TextStyle(color: t.text),
-          decoration: const InputDecoration(
-              hintText: '닉네임', helperText: '랭킹에 표시될 이름이에요 (최대 16자)'),
-          onSubmitted: (v) => Navigator.of(ctx).pop(v),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(), child: const Text('취소')),
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(ctrl.text),
-              child: const Text('저장')),
-        ],
-      ),
-    );
-    final trimmed = name?.trim();
-    if (trimmed != null && trimmed.isNotEmpty) {
-      _s.nickname = trimmed.length > 16 ? trimmed.substring(0, 16) : trimmed;
-      setState(() {});
-    }
-  }
+  final store = LocalStore.shared;
+  bool linking = false;
+  String? linkMessage;
+  bool deleting = false;
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    return Scaffold(
-      backgroundColor: t.bg,
-      body: SafeArea(
-        child: Column(
-          children: [
+    return SheetScaffold(
+      title: '내 정보',
+      child: ListenableBuilder(
+        listenable: store,
+        builder: (_, _) => SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          child: Column(children: [
             _header(t),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-                children: [
-                  _profileHeader(t),
-                  const SizedBox(height: 22),
-                  _walletSection(t),
-                  const SizedBox(height: 22),
-                  _recordList(t),
-                  const SizedBox(height: 22),
-                  _accountSection(t),
-                ],
-              ),
-            ),
-          ],
+            const SizedBox(height: 18),
+            _wallet(t),
+            const SizedBox(height: 18),
+            _records(t),
+            const SizedBox(height: 18),
+            _account(t),
+            const SizedBox(height: 18),
+            _danger(t),
+          ]),
         ),
       ),
     );
   }
 
-  Widget _header(AppTheme t) => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 16, 0),
-        child: Row(
-          children: [
-            Material(
-              color: t.fill,
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: () => Navigator.of(context).pop(),
-                child: SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: Icon(Icons.close, color: t.textSecondary, size: 20)),
-              ),
-            ),
-            Expanded(
-              child: Text('내 정보',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: t.text, fontSize: 20, fontWeight: FontWeight.w800)),
-            ),
-            const SizedBox(width: 40),
-          ],
-        ),
+  Widget _label(AppTheme t, String s) => Align(
+        alignment: Alignment.centerLeft,
+        child: Text(s,
+            style: TextStyle(
+                color: t.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
       );
 
-  Widget _profileHeader(AppTheme t) {
-    final title = _equippedTitle;
-    return Column(
-      children: [
+  // MARK: 머리 — 아바타 · 닉네임 · 칭호
+
+  Widget _header(AppTheme t) {
+    final title = store.equippedTitleName;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(children: [
         Container(
           width: 72,
           height: 72,
           decoration: BoxDecoration(color: t.fill, shape: BoxShape.circle),
-          child: Icon(Icons.person, size: 32, color: t.text),
+          child: Icon(CupertinoIcons.person_fill, size: 34, color: t.text),
         ),
         const SizedBox(height: 10),
-        GestureDetector(
+        Pressable(
           onTap: _editName,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(_s.nickname,
-                  style: TextStyle(
-                      color: t.text, fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(width: 6),
-              Icon(Icons.edit, size: 14, color: t.textSecondary),
-            ],
-          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(store.nickname,
+                style: TextStyle(color: t.text, fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(width: 6),
+            Icon(CupertinoIcons.pencil, size: 15, color: t.textSecondary),
+          ]),
         ),
         const SizedBox(height: 7),
-        if (title == null || title.id == 'rookie')
-          Text('칭호는 업적 탭에서 얻어 장착할 수 있어요',
+        if (title.isEmpty)
+          Text('칭호 미착용 · 업적 탭에서 칭호를 얻어 보세요',
               style: TextStyle(color: t.textTertiary, fontSize: 11))
         else
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-                color: title.rarity.color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(20)),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(title.rarity.icon, size: 14, color: title.rarity.color),
-                const SizedBox(width: 5),
-                Text(title.name,
-                    style: TextStyle(
-                        color: title.rarity.color,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-        const SizedBox(height: 6),
+          TitleBadge(name: title, size: 12),
+        const SizedBox(height: 10),
         Text('닉네임을 눌러 변경할 수 있어요',
             style: TextStyle(color: t.textSecondary, fontSize: 12)),
+      ]),
+    );
+  }
+
+  Future<void> _editName() async {
+    final ctrl = TextEditingController(text: store.nickname);
+    await showIOSAlert(
+      context,
+      title: '닉네임 변경',
+      content: Column(children: [
+        const Text('랭킹에 표시될 이름이에요 (최대 16자)'),
+        const SizedBox(height: 10),
+        CupertinoTextField(controller: ctrl, placeholder: '닉네임', autofocus: true),
+      ]),
+      actions: [
+        ('취소', false, null),
+        ('저장', false, () {
+          final v = ctrl.text.trim();
+          if (v.isNotEmpty) store.nickname = v.length > 16 ? v.substring(0, 16) : v;
+        }),
       ],
     );
   }
 
-  Widget _sectionLabel(AppTheme t, String s) => Padding(
-        padding: const EdgeInsets.only(bottom: 10, left: 2),
-        child: Text(s,
-            style: TextStyle(
-                color: t.textSecondary,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
-      );
+  // MARK: 보유
 
-  Widget _walletSection(AppTheme t) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionLabel(t, '보유'),
-          Row(
-            children: [
-              _walletChip(t, '🪙', '코인', '${_s.coins}'),
+  Widget _wallet(AppTheme t) {
+    Widget chip(Widget icon, String value, String label) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration:
+                BoxDecoration(color: t.fill, borderRadius: BorderRadius.circular(12)),
+            child: Row(children: [
+              icon,
               const SizedBox(width: 10),
-              _walletChip(t, '🚩', '자동깃발', '${_s.ownedFlags}'),
-              const SizedBox(width: 10),
-              _walletChip(t, '📡', '레이더', '${_s.ownedRadars}'),
-            ],
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(value,
+                    style: TextStyle(color: t.text, fontSize: 17, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 2),
+                Text(label,
+                    style: TextStyle(
+                        color: t.textSecondary, fontSize: 11, fontWeight: FontWeight.w500)),
+              ]),
+            ]),
           ),
+        );
+    return Column(children: [
+      _label(t, '보유'),
+      const SizedBox(height: 10),
+      Row(children: [
+        chip(const GoldenMineIcon(size: 24), fmt(store.coins), '코인'),
+        const SizedBox(width: 10),
+        chip(const Text('🚩', style: TextStyle(fontSize: 22)), '${store.ownedFlags}', '자동깃발'),
+      ]),
+    ]);
+  }
+
+  // MARK: 난이도별 기록
+
+  Widget _records(AppTheme t) => Column(children: [
+        _label(t, '난이도별 기록'),
+        const SizedBox(height: 10),
+        for (final d in Difficulty.values) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration:
+                BoxDecoration(color: t.fill, borderRadius: BorderRadius.circular(12)),
+            child: Row(children: [
+              Text(d.label,
+                  style: TextStyle(color: t.text, fontSize: 16, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                if (store.bestLocal(d) != null)
+                  Text('최고 ${store.bestLocal(d)}초',
+                      style: TextStyle(color: t.text, fontSize: 14, fontWeight: FontWeight.w600))
+                else
+                  Text('기록 없음',
+                      style: TextStyle(
+                          color: t.textTertiary, fontSize: 14, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 2),
+                Text('클리어 ${store.countLocal(d)}회',
+                    style: TextStyle(
+                        color: t.textSecondary, fontSize: 11, fontWeight: FontWeight.w500)),
+              ]),
+            ]),
+          ),
+          const SizedBox(height: 10),
         ],
-      );
+      ]);
 
-  Widget _walletChip(AppTheme t, String emoji, String label, String value) =>
-      Expanded(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(
-              color: t.fill, borderRadius: BorderRadius.circular(12)),
-          child: Row(
-            children: [
-              Text(emoji, style: const TextStyle(fontSize: 20)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(value,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            color: t.text,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800)),
-                    Text(label,
-                        style: TextStyle(
-                            color: t.textSecondary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500)),
-                  ],
-                ),
-              ),
-            ],
-          ),
+  // MARK: 계정 연동
+
+  String? _email(String provider) {
+    final u = FirebaseAuth.instance.currentUser;
+    for (final p in u?.providerData ?? const <UserInfo>[]) {
+      if (p.providerId == provider) return p.email ?? u?.email;
+    }
+    return null;
+  }
+
+  Widget _account(AppTheme t) {
+    final apple = AppleAuth.isLinked, google = GoogleAuth.isLinked;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _label(t, '계정 연동'),
+      const SizedBox(height: 10),
+      if (!apple && !google) ...[
+        Text('로그인하면 닉네임·기록·전적이 안전하게 보관되어, 기기를 바꿔도 그대로 복구할 수 있어요.',
+            style: TextStyle(color: t.textSecondary, fontSize: 12)),
+        const SizedBox(height: 10),
+      ],
+      if (apple)
+        _linkedRow(t, 'Apple 계정 연동됨', _email('apple.com'))
+      else if (Platform.isIOS)
+        _authButton(
+          label: 'Apple로 로그인',
+          icon: Icons.apple,
+          bg: t.dark ? Colors.white : Colors.black,
+          fg: t.dark ? Colors.black : Colors.white,
+          onTap: () => _run(AppleAuth.signIn),
         ),
-      );
+      const SizedBox(height: 10),
+      if (google)
+        _linkedRow(t, 'Google 계정 연동됨', _email('google.com'))
+      else
+        _authButton(
+          label: 'Google로 계속하기',
+          icon: CupertinoIcons.globe,
+          bg: const Color.fromRGBO(66, 133, 245, 1),
+          fg: Colors.white,
+          onTap: () => _run(GoogleAuth.signIn),
+        ),
+      if (linkMessage != null) ...[
+        const SizedBox(height: 10),
+        Text(linkMessage!,
+            style: TextStyle(
+                color: t.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
+      ],
+    ]);
+  }
 
-  Widget _recordList(AppTheme t) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionLabel(t, '난이도별 기록'),
-          for (final d in Difficulty.values) ...[
-            _recordRow(t, d),
-            const SizedBox(height: 10),
-          ],
-        ],
-      );
-
-  Widget _recordRow(AppTheme t, Difficulty d) {
-    final best = _s.soloBest(d);
-    final count = _s.soloClearCount(d);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration:
-          BoxDecoration(color: t.fill, borderRadius: BorderRadius.circular(12)),
-      child: Row(
-        children: [
-          Text(d.label,
-              style: TextStyle(
-                  color: t.text, fontSize: 16, fontWeight: FontWeight.bold)),
-          const Spacer(),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(best != null ? '최고 $best초' : '기록 없음',
-                  style: TextStyle(
-                      color: best != null ? t.text : t.textTertiary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600)),
-              Text('클리어 $count회',
-                  style: TextStyle(
-                      color: t.textSecondary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500)),
-            ],
-          ),
-        ],
+  Widget _authButton(
+      {required String label,
+      required IconData icon,
+      required Color bg,
+      required Color fg,
+      required VoidCallback onTap}) {
+    return Opacity(
+      opacity: linking ? 0.6 : 1,
+      child: Pressable(
+        enabled: !linking,
+        onTap: onTap,
+        child: Container(
+          height: 48,
+          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(icon, size: 20, color: fg),
+            const SizedBox(width: 8),
+            Text(label,
+                style: TextStyle(color: fg, fontSize: 17, fontWeight: FontWeight.w600)),
+          ]),
+        ),
       ),
     );
   }
 
-  // ── 계정 ──
-  Widget _accountSection(AppTheme t) {
-    final linkedApple = AppleAuth.isLinked;
-    final linkedGoogle = GoogleAuth.isLinked;
-    final linked = linkedApple || linkedGoogle;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionLabel(t, '계정'),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-              color: t.fill, borderRadius: BorderRadius.circular(12)),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(linked ? Icons.verified_user : Icons.person_outline,
-                      size: 18, color: t.textSecondary),
-                  const SizedBox(width: 8),
-                  Text(
-                      linkedApple
-                          ? 'Apple 계정 연동됨'
-                          : linkedGoogle
-                              ? 'Google 계정 연동됨'
-                              : '게스트(익명)',
-                      style: TextStyle(
-                          color: t.text,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700)),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                  linked
-                      ? '진행 내용이 계정에 저장돼요. 새 기기에서 같은 계정으로 로그인하면 이어집니다.'
-                      : '로그인하면 진행 내용이 계정에 저장돼 기기를 바꿔도 이어집니다.',
-                  style: TextStyle(color: t.textTertiary, fontSize: 11)),
-              const SizedBox(height: 14),
-              if (!linked) ...[
-                if (Platform.isIOS)
-                  _authButton(t, '  Apple로 로그인', Icons.apple, Colors.black,
-                      Colors.white, _linkApple),
-                if (Platform.isIOS) const SizedBox(height: 8),
-                _authButton(t, '  Google로 로그인', Icons.g_mobiledata,
-                    Colors.white, Colors.black87, _linkGoogle,
-                    border: true),
-              ],
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: _busy ? null : _confirmDelete,
-                child: Text('계정 삭제(회원탈퇴)',
-                    style: TextStyle(
-                        color: t.textTertiary,
-                        fontSize: 12,
-                        decoration: TextDecoration.underline)),
-              ),
-            ],
+  Widget _linkedRow(AppTheme t, String title, String? subtitle) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(color: t.fill, borderRadius: BorderRadius.circular(12)),
+        child: Row(children: [
+          const Icon(CupertinoIcons.checkmark_seal_fill, size: 22, color: Colors.green),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title,
+                  style: TextStyle(color: t.text, fontSize: 15, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 2),
+              Text(subtitle ?? '기기를 바꿔도 기록이 복구돼요',
+                  style: TextStyle(color: t.textSecondary, fontSize: 12)),
+            ]),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _authButton(AppTheme t, String label, IconData icon, Color bg,
-          Color fg, VoidCallback onTap,
-          {bool border = false}) =>
-      SizedBox(
-        width: double.infinity,
-        height: 46,
-        child: ElevatedButton.icon(
-          onPressed: _busy ? null : onTap,
-          icon: Icon(icon, color: fg, size: 22),
-          label: Text(label,
-              style: TextStyle(
-                  color: fg, fontSize: 15, fontWeight: FontWeight.w700)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: bg,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: border
-                    ? BorderSide(color: t.textTertiary.withValues(alpha: 0.4))
-                    : BorderSide.none),
-          ),
-        ),
+        ]),
       );
 
-  Future<void> _linkApple() => _runLogin(AppleAuth.signIn);
-  Future<void> _linkGoogle() => _runLogin(GoogleAuth.signIn);
-
-  Future<void> _runLogin(Future<LinkOutcome> Function() login) async {
-    setState(() => _busy = true);
+  /// 연동 결과(Apple·Google 공통) — 클라우드와 머지 + 안내.
+  Future<void> _run(Future<LinkOutcome> Function() login) async {
+    setState(() {
+      linking = true;
+      linkMessage = null;
+    });
     final outcome = await login();
-    if (!mounted) return;
+    String? msg;
     switch (outcome) {
       case LinkLinked(:final uid, :final suggestedName):
-        if (suggestedName != null && _s.nickname == '플레이어') {
-          _s.nickname = suggestedName.length > 16
-              ? suggestedName.substring(0, 16)
-              : suggestedName;
-        }
-        await CloudBackup.backup(uid);
-        if (mounted) _toast('계정이 연동되었어요');
-      case LinkSwitched(:final uid):
-        await CloudBackup.restore(uid);
-        if (mounted) _toast('기존 계정으로 전환했어요');
+        await store.syncAfterLink(uid, suggestedName);
+        msg = '연동 완료! 이제 기기를 바꿔도 기록이 복구돼요.';
+      case LinkSwitched(:final uid, :final suggestedName):
+        await store.syncAfterLink(uid, suggestedName);
+        msg = '기존 계정의 기록을 불러왔어요.';
       case LinkCancelled():
         break;
-      case LinkFailed():
-        _toast('로그인에 실패했어요. 다시 시도해 주세요.');
+      case LinkFailed(:final error):
+        msg = '연동에 실패했어요: $error';
     }
-    if (mounted) setState(() => _busy = false);
+    if (!mounted) return;
+    setState(() {
+      linking = false;
+      linkMessage = msg;
+    });
   }
 
-  Future<void> _confirmDelete() async {
-    final t = AppTheme.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: t.surface,
-        title: Text('계정 삭제', style: TextStyle(color: t.text)),
-        content: Text(
-            '계정과 모든 진행 내용(랭킹·재화·기록)이 영구 삭제돼요. 되돌릴 수 없어요. 계속할까요?',
-            style: TextStyle(color: t.textSecondary)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('취소')),
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('삭제', style: TextStyle(color: Colors.red))),
-        ],
+  // MARK: 계정 삭제
+
+  Widget _danger(AppTheme t) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Divider(color: t.border.withValues(alpha: 0.5), height: 12),
+      const SizedBox(height: 8),
+      Pressable(
+        enabled: !deleting,
+        onTap: () {
+          Haptics.tap();
+          showIOSAlert(context,
+              title: '계정을 삭제할까요?',
+              message: '계정과 모든 데이터(닉네임·기록·전적·코인·아이템)가 영구 삭제됩니다. 이 작업은 되돌릴 수 없어요.',
+              actions: [
+                ('삭제', true, _performDelete),
+                ('취소', false, null),
+              ]);
+        },
+        child: Container(
+          height: 48,
+          decoration: BoxDecoration(
+              color: Colors.red.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(12)),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            if (deleting)
+              const CupertinoActivityIndicator(color: Colors.red, radius: 8)
+            else
+              const Icon(CupertinoIcons.trash, size: 16, color: Colors.red),
+            const SizedBox(width: 8),
+            Text(deleting ? '삭제 중…' : '계정 삭제',
+                style: const TextStyle(
+                    color: Colors.red, fontSize: 15, fontWeight: FontWeight.w600)),
+          ]),
+        ),
       ),
-    );
-    if (ok != true) return;
-    setState(() => _busy = true);
+      const SizedBox(height: 8),
+      Text('계정과 모든 기록·전적·코인·아이템이 영구 삭제되며 되돌릴 수 없어요.',
+          style: TextStyle(color: t.textTertiary, fontSize: 11)),
+    ]);
+  }
+
+  Future<void> _performDelete() async {
+    setState(() => deleting = true);
     try {
       await AccountDeletion.deleteAccount();
-      if (mounted) _toast('계정을 삭제했어요');
-    } on DeletionCancelled {
-      if (mounted) _toast('본인 확인이 취소되어 삭제하지 않았어요');
-    } catch (_) {
-      if (mounted) _toast('삭제에 실패했어요. 다시 시도해 주세요.');
+      if (!mounted) return;
+      setState(() => deleting = false);
+      Navigator.of(context).maybePop();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => deleting = false);
+      showIOSAlert(context, title: '알림', message: e.toString(), actions: [('확인', false, null)]);
     }
-    if (mounted) setState(() => _busy = false);
   }
-
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(msg)));
 }

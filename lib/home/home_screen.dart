@@ -1,10 +1,17 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../app/deep_link.dart';
 import '../core/board.dart';
+import '../core/haptics.dart';
 import '../core/local_store.dart';
+import '../core/nav.dart';
 import '../core/theme.dart';
+import '../core/ui.dart';
 import '../game/game_screen.dart';
 import '../guide/guide_screen.dart';
+import '../guide/practice.dart';
+import '../mail/mail.dart';
 import '../mail/mail_screen.dart';
 import '../multiplayer/versus_menu_screen.dart';
 import '../notice/notice.dart';
@@ -16,10 +23,7 @@ import '../ranking/ranking_screen.dart';
 import '../settings/settings_screen.dart';
 import '../shop/shop_screen.dart';
 
-/// 홈 화면 — Swift StartView 이식. 상단바(알림·선물·코인·상점) + 타이틀 +
-/// 솔로/멀티 카드 + 하단 내비(가이드·랭킹·업적·내정보·설정).
-///
-/// 알림/가이드/우편/랭킹/업적/내정보/설정/상점 모두 이식됨.
+/// 홈 — Swift StartView 이식. 상단(공지·선물 | 코인·상점) + 타이틀 + 솔로/멀티 카드 + 아이콘 행.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -28,328 +32,143 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  bool _noticeDot = false;
+  static const _gold = AppTheme.gold;
+  final store = LocalStore.shared;
 
   @override
   void initState() {
     super.initState();
-    _checkNotices();
+    // 홈 진입 시 선물함을 한 번 불러와 안 받은 선물 뱃지를 띄운다.
+    MailStore.shared.reload();
+    // 방 초대 딥링크 — 콜드 런치(이미 도착)·웜 런치(나중 도착) 모두 소비한다.
+    DeepLinkRouter.shared.addListener(_consumeDeepLink);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _consumeDeepLink());
   }
 
-  Future<void> _checkNotices() async {
-    try {
-      final list = await NoticeService().fetchActive();
-      if (!mounted) return;
-      final last = LocalStore.shared.noticeLastSeen;
-      setState(() => _noticeDot = list.any((n) => n.date.isAfter(last)));
-      // 콜드런치 팝업 — showPopup이고 오늘 아직 안 막은 첫 공지 하나만.
-      for (final n in list) {
-        if (n.showPopup && !LocalStore.shared.isNoticeDismissedToday(n.id)) {
-          await showNoticePopup(context, n);
-          break;
-        }
-      }
-    } catch (_) {/* 조용히 무시 — 종 점만 안 뜸 */}
+  @override
+  void dispose() {
+    DeepLinkRouter.shared.removeListener(_consumeDeepLink);
+    super.dispose();
   }
 
-  Future<void> _openShop(int tab) async {
-    await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ShopScreen(initialTab: tab)));
-    if (mounted) setState(() {}); // 코인 잔액 갱신
+  void _consumeDeepLink() {
+    if (!mounted || DeepLinkRouter.shared.value == null) return;
+    final p = DeepLinkRouter.shared.take()!;
+    // 다른 화면 위에 있으면 홈까지 닫고 방으로 들어간다(원본: 화면 정체성을 바꿔 새 매칭).
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    launchJoin(context, p.$1, p.$2);
   }
+
+  void _openShop(ShopTab tab) =>
+      presentSheet(context, (_) => ShopScreen(initialTab: tab));
+
+  void _sheet(Widget Function() page) => presentSheet(context, (_) => page());
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    return Scaffold(
-      backgroundColor: t.bg,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _topBar(context, t),
-            Expanded(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 440),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _titleBlock(t),
-                        const SizedBox(height: 36),
-                        _modeCard(
-                          t,
-                          emoji: '🎯',
-                          title: '솔로 플레이',
-                          subtitle: '초급 · 중급 · 고급 난이도 도전',
-                          color: AppTheme.soloAccent,
-                          onTap: () => _pickSolo(context),
-                        ),
-                        const SizedBox(height: 12),
-                        _modeCard(
-                          t,
-                          emoji: '🏁',
-                          title: '멀티 플레이',
-                          subtitle: '지뢰찾기 · 보물찾기 온라인 대전',
-                          color: AppTheme.multiAccent,
-                          onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                  builder: (_) => const VersusMenuScreen())),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            _bottomNav(context, t),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── 상단바 ──
-  Widget _topBar(BuildContext c, AppTheme t) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: Row(
-        children: [
-          _circleBtn(t, Icons.notifications_none, () {
-            Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const NoticeScreen()))
-                .then((_) {
-              if (mounted) setState(() => _noticeDot = false); // 봤으면 점 끄기
-            });
-          }, badge: _noticeDot),
-          const SizedBox(width: 10),
-          _circleBtn(t, Icons.redeem, () {
-            Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const MailScreen()))
-                .then((_) {
-              if (mounted) setState(() {}); // 코인/아이템 수령 반영
-            });
-          }, badge: true),
-          const Spacer(),
-          _coinPill(c, t),
-          const SizedBox(width: 10),
-          _circleBtn(t, Icons.shopping_bag_outlined, () => _openShop(0)),
-        ],
-      ),
-    );
-  }
-
-  Widget _circleBtn(AppTheme t, IconData icon, VoidCallback onTap,
-      {bool badge = false}) {
     return Stack(
-      clipBehavior: Clip.none,
       children: [
-        Material(
-          color: t.fill,
-          shape: const CircleBorder(),
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onTap,
-            child: SizedBox(
-                width: 44, height: 44, child: Icon(icon, color: t.text, size: 22)),
-          ),
-        ),
-        if (badge)
-          Positioned(
-            right: 2,
-            top: 2,
-            child: Container(
-              width: 9,
-              height: 9,
-              decoration: const BoxDecoration(
-                  color: Color(0xFFFF3B30), shape: BoxShape.circle),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _coinPill(BuildContext c, AppTheme t) {
-    const gold = Color(0xFFF4C13B);
-    return Material(
-      color: t.fill,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: () => _openShop(1),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 7, 6, 7),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: gold.withValues(alpha: 0.6)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('☀️', style: TextStyle(fontSize: 15)),
-              const SizedBox(width: 6),
-              Text('${LocalStore.shared.coins}',
-                  style: TextStyle(
-                      color: t.text, fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(width: 8),
-              const CircleAvatar(
-                radius: 11,
-                backgroundColor: gold,
-                child: Icon(Icons.add, size: 15, color: Colors.black),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── 하단 내비 ──
-  Widget _bottomNav(BuildContext c, AppTheme t) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _navItem(t, Icons.menu_book, '가이드', () {
-            Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const GuideScreen()));
-          }),
-          _navItem(t, Icons.emoji_events, '랭킹', () {
-            Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const RankingScreen()));
-          }),
-          _navItem(t, Icons.workspace_premium, '업적', () {
-            Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const AchievementsScreen()));
-          }),
-          _navItem(t, Icons.person, '내 정보', () async {
-            await Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ProfileScreen()));
-            if (mounted) setState(() {}); // 닉네임·잔액 변동 반영
-          }),
-          _navItem(t, Icons.settings, '설정', () {
-            Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SettingsScreen()));
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _navItem(AppTheme t, IconData icon, String label, VoidCallback onTap) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(30),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(color: t.fill, shape: BoxShape.circle),
-              child: Icon(icon, color: t.textSecondary, size: 24),
-            ),
-            const SizedBox(height: 6),
-            Text(label,
-                style: TextStyle(color: t.textSecondary, fontSize: 12)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _titleBlock(AppTheme t) {
-    return Column(
-      children: [
-        const Text('💣', style: TextStyle(fontSize: 56)),
-        const SizedBox(height: 10),
-        Text('지뢰 찾기',
-            style: TextStyle(
-                color: t.text, fontSize: 34, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 6),
-        Text('플레이 모드를 선택하세요',
-            style: TextStyle(color: t.textSecondary, fontSize: 15)),
-      ],
-    );
-  }
-
-  void _pickSolo(BuildContext context) {
-    final t = AppTheme.of(context);
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: t.surface,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 5,
-                  margin: const EdgeInsets.only(bottom: 14),
-                  decoration: BoxDecoration(
-                      color: t.border,
-                      borderRadius: BorderRadius.circular(3)),
-                ),
-              ),
-              Text('솔로 플레이',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: t.text, fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              Text('난이도를 선택하세요',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: t.textSecondary, fontSize: 14)),
-              const SizedBox(height: 16),
-              for (final d in Difficulty.values)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Material(
-                    color: t.fill,
-                    borderRadius: BorderRadius.circular(14),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => GameScreen(initialDifficulty: d)));
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 18, vertical: 18),
-                        child: Row(
-                          children: [
-                            Text(d.label,
-                                style: TextStyle(
-                                    color: t.text,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold)),
-                            const Spacer(),
-                            Text('${d.rows}×${d.cols} · 지뢰 ${d.mineCount}',
-                                style: TextStyle(
-                                    color: t.textSecondary, fontSize: 15)),
-                            const SizedBox(width: 8),
-                            Icon(Icons.chevron_right,
-                                color: t.textTertiary, size: 22),
-                          ],
+        Scaffold(
+          backgroundColor: t.bg,
+          body: ListenableBuilder(
+            listenable: Listenable.merge([
+              store,
+              NoticeStore.shared,
+              MailStore.shared,
+            ]),
+            builder: (context, _) => SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  _topBar(t),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, box) => SingleChildScrollView(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minHeight: box.maxHeight),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 460),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 24,
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _titleBlock(t),
+                                    const SizedBox(height: 24 + 16),
+                                    _modeCards(t),
+                                    const SizedBox(height: 16 + 4),
+                                    _iconRow(t),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
         ),
-      ),
+        // 시작 공지 팝업 — 홈에서만(게임 중엔 가린다).
+        ListenableBuilder(
+          listenable: NoticeStore.shared,
+          builder: (_, _) {
+            final n = NoticeStore.shared.popup;
+            return AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: n == null
+                  ? const SizedBox.shrink()
+                  : NoticePopup(notice: n),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  // MARK: 메인 — 솔로 / 멀티 카드
+
+  Widget _modeCards(AppTheme t) {
+    return Column(
+      children: [
+        Stack(
+          children: [
+            _modeCard(
+              t,
+              emoji: '🎯',
+              title: '솔로 플레이',
+              subtitle: '초급 · 중급 · 고급 난이도 도전',
+              color: AppTheme.soloAccent,
+              onTap: _pickSolo,
+            ),
+            Positioned(
+              top: 0,
+              right: 0,
+              child: PracticeHelpButton(
+                onTap: () => openPractice(context, OnboardKind.solo),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _modeCard(
+          t,
+          emoji: '🏁',
+          title: '멀티 플레이',
+          subtitle: '지뢰찾기 · 보물찾기 온라인 대전',
+          color: AppTheme.multiAccent,
+          onTap: () =>
+              Navigator.of(context).push(coverRoute(const VersusMenuScreen())),
+        ),
+      ],
     );
   }
 
@@ -361,53 +180,379 @@ class _HomeScreenState extends State<HomeScreen> {
     required Color color,
     required VoidCallback onTap,
   }) {
-    return Material(
-      color: t.fill,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+    return Pressable(
+      haptic: true,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
+        decoration: BoxDecoration(
+          color: t.fill,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.20),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(emoji, style: const TextStyle(fontSize: 30)),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: t.text,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: t.textSecondary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(CupertinoIcons.chevron_right, size: 15, color: t.textTertiary),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // MARK: 아이콘 행 — 가이드 / 랭킹 / 업적 / 내 정보 / 설정
+
+  Widget _iconRow(AppTheme t) {
+    return Row(
+      children: [
+        _iconButton(
+          t,
+          CupertinoIcons.book_fill,
+          '가이드',
+          () => _sheet(() => const GuideScreen()),
+        ),
+        const SizedBox(width: 12),
+        _iconButton(
+          t,
+          Icons.emoji_events,
+          '랭킹',
+          () => _sheet(() => const RankingScreen()),
+        ),
+        const SizedBox(width: 12),
+        _iconButton(
+          t,
+          CupertinoIcons.rosette,
+          '업적',
+          () => _sheet(() => const AchievementsScreen()),
+          badge: store.dailyClaimableCount > 0,
+        ),
+        const SizedBox(width: 12),
+        _iconButton(
+          t,
+          CupertinoIcons.person_fill,
+          '내 정보',
+          () => _sheet(() => const ProfileScreen()),
+        ),
+        const SizedBox(width: 12),
+        _iconButton(
+          t,
+          CupertinoIcons.gear_alt_fill,
+          '설정',
+          () => _sheet(() => const SettingsScreen()),
+        ),
+      ],
+    );
+  }
+
+  Widget _iconButton(
+    AppTheme t,
+    IconData icon,
+    String label,
+    VoidCallback onTap, {
+    bool badge = false,
+  }) {
+    return Expanded(
+      child: Pressable(
+        haptic: true,
         onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: color.withValues(alpha: 0.4)),
+        child: Column(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: t.fill,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, size: 19, color: t.textSecondary),
+                ),
+                if (badge)
+                  Positioned(top: -1, right: -1, child: _dot(t, 11, 2)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: t.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dot(AppTheme t, double size, double stroke) => Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: Colors.red,
+      shape: BoxShape.circle,
+      border: Border.all(color: t.bg, width: stroke),
+    ),
+  );
+
+  // MARK: 상단 바 — 공지·선물 | 코인·상점
+
+  Widget _topBar(AppTheme t) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+      child: Row(
+        children: [
+          _circleButton(t, CupertinoIcons.bell_fill, () {
+            _sheet(() => const NoticeScreen());
+          }, badge: NoticeStore.shared.hasUnread),
+          const SizedBox(width: 8),
+          _circleButton(t, CupertinoIcons.gift_fill, () {
+            _sheet(() => const MailScreen());
+          }, badge: MailStore.shared.hasUnclaimed),
+          const Spacer(),
+          _coinChip(t),
+          const SizedBox(width: 8),
+          _circleButton(
+            t,
+            CupertinoIcons.bag_fill,
+            () => _openShop(ShopTab.gacha),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
-          child: Row(
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.20),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                alignment: Alignment.center,
-                child: Text(emoji, style: const TextStyle(fontSize: 30)),
+        ],
+      ),
+    );
+  }
+
+  Widget _circleButton(
+    AppTheme t,
+    IconData icon,
+    VoidCallback onTap, {
+    bool badge = false,
+  }) {
+    return Pressable(
+      haptic: true,
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(color: t.fill, shape: BoxShape.circle),
+            child: Icon(icon, size: 16, color: t.text),
+          ),
+          if (badge) Positioned(top: -1, right: -1, child: _dot(t, 9, 1.5)),
+        ],
+      ),
+    );
+  }
+
+  Widget _coinChip(AppTheme t) {
+    return Pressable(
+      haptic: true,
+      onTap: () => _openShop(ShopTab.coins),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
+        decoration: BoxDecoration(
+          color: t.fill,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: _gold.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const GoldenMineIcon(size: 17),
+            const SizedBox(width: 7),
+            Text(
+              fmt(store.coins),
+              style: TextStyle(
+                color: t.text,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
-                        style: TextStyle(
-                            color: t.text,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 4),
-                    Text(subtitle,
-                        style: TextStyle(
-                            color: t.textSecondary,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500)),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: t.textTertiary, size: 24),
-            ],
+            ),
+            const SizedBox(width: 7),
+            const Icon(CupertinoIcons.plus_circle_fill, size: 17, color: _gold),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // MARK: 타이틀
+
+  Widget _titleBlock(AppTheme t) {
+    return Column(
+      children: [
+        const Text('💣', style: TextStyle(fontSize: 52)),
+        const SizedBox(height: 8),
+        Text(
+          '지뢰 찾기',
+          style: TextStyle(
+            color: t.text,
+            fontSize: 30,
+            fontWeight: FontWeight.w900,
           ),
         ),
+        const SizedBox(height: 8),
+        Text(
+          '플레이 모드를 선택하세요',
+          style: TextStyle(
+            color: t.textSecondary,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // MARK: 솔로 난이도 선택(하프 시트)
+
+  void _pickSolo() {
+    final t = AppTheme.of(context);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: t.surface,
+      showDragHandle: true,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+      ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (ctx) => DifficultyPicker(
+        title: '솔로 플레이',
+        onPick: (d) {
+          Navigator.pop(ctx);
+          pushGameWithOnboarding(
+            context,
+            OnboardKind.solo,
+            () => GameScreen(initialDifficulty: d),
+            landscape: d.prefersLandscape,
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 솔로 플레이 시작 전 난이도 선택 시트(원본 DifficultyPicker).
+class DifficultyPicker extends StatelessWidget {
+  const DifficultyPicker({
+    super.key,
+    required this.title,
+    required this.onPick,
+  });
+  final String title;
+  final void Function(Difficulty) onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      child: Column(
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color: t.text,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '난이도를 선택하세요',
+            style: TextStyle(color: t.textSecondary, fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+          for (final d in Difficulty.values)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Pressable(
+                onTap: () {
+                  Haptics.tap();
+                  onPick(d);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 15,
+                  ),
+                  decoration: BoxDecoration(
+                    color: t.fill,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        d.label,
+                        style: TextStyle(
+                          color: t.text,
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${d.rows}×${d.cols} · 지뢰 ${d.mineCount}',
+                        style: TextStyle(
+                          color: t.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        CupertinoIcons.chevron_right,
+                        size: 13,
+                        color: t.textTertiary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

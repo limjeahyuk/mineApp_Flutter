@@ -1,12 +1,20 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' hide Title;
 
+import '../app/deep_link.dart';
+import '../core/local_store.dart';
 import '../core/theme.dart';
+import '../core/types.dart';
+import '../core/ui.dart';
+import '../game/item_dock.dart';
 import '../multiplayer/firebase_match_service.dart';
+import '../multiplayer/match_widgets.dart';
 import '../multiplayer/multiplayer.dart';
+import '../progression/title.dart';
 import 'coop_controller.dart';
-import 'touch_model.dart';
+import 'touch_board.dart';
 
-/// 협동('너에게 닿기를') 화면 — 안개 공유 보드에서 파트너와 만나면 승리.
+/// "너에게 닿기를" 협동 화면 — Swift TouchMultiplayerView 이식.
 class CoopScreen extends StatefulWidget {
   const CoopScreen({super.key, required this.mode});
   final RaceMode mode;
@@ -16,333 +24,195 @@ class CoopScreen extends StatefulWidget {
 }
 
 class _CoopScreenState extends State<CoopScreen> {
-  late final CoopController ctrl =
-      CoopController(FirebaseMatchService(kind: 'touch'));
-  bool flagMode = false;
+  late final CoopController vm = CoopController(FirebaseMatchService(kind: 'touch'));
+  bool flagMode = true; // 기본 깃발 모드
+  bool probing = false;
+  bool reviewing = false;
+  CoopFlow _lastFlow = CoopFlow.searching;
+  bool _lastStunned = false;
 
-  // 80×80 큰 보드는 화면보다 크므로 팬/줌으로 본다. 판 시작 시 내 시작점을 화면 중앙에 한 번 맞춘다.
-  final TransformationController _tc = TransformationController();
-  bool _centered = false;
+  static const accent = Color.fromRGBO(102, 179, 140, 1); // (0.40,0.70,0.55)
 
   @override
   void initState() {
     super.initState();
-    ctrl.start(widget.mode);
+    vm.addListener(_onChange);
+    vm.start(widget.mode);
+  }
+
+  void _onChange() {
+    if (vm.flow != _lastFlow) {
+      _lastFlow = vm.flow;
+      if (vm.flow != CoopFlow.racing) probing = false;
+      if (vm.flow == CoopFlow.racing) reviewing = false;
+    }
+    if (vm.game.stunned != _lastStunned) {
+      _lastStunned = vm.game.stunned;
+      if (_lastStunned) probing = false;
+    }
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    ctrl.leave();
-    ctrl.dispose();
-    _tc.dispose();
+    vm.removeListener(_onChange);
+    vm.leave();
+    vm.dispose();
     super.dispose();
   }
 
-  void _exit() {
-    if (mounted) Navigator.of(context).pop();
-  }
-
-  static const _coop = Color(0xFF39A085);
+  void _close() => Navigator.of(context).maybePop();
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
+    final g = vm.game;
     return Scaffold(
       backgroundColor: t.bg,
-      body: SafeArea(
-        child: ListenableBuilder(
-          listenable: ctrl,
-          builder: (_, _) {
-            if (ctrl.failure != null) return _failure(t, ctrl.failure!);
-            switch (ctrl.flow) {
-              case CoopFlow.searching:
-                return _searching(t);
-              case CoopFlow.starting:
-                return _countdown(t);
-              case CoopFlow.racing:
-              case CoopFlow.finished:
-                return _race(t);
-            }
-          },
+      body: Stack(children: [
+        SafeArea(
+          child: vm.flow == CoopFlow.searching
+              ? (vm.failure != null
+                  ? MatchFailedView(error: vm.failure!, onClose: _close)
+                  : _searching())
+              : _race(t),
         ),
-      ),
-    );
-  }
-
-  Widget _searching(AppTheme t) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 24),
-            Text('파트너를 찾는 중…',
-                style: TextStyle(
-                    color: t.text, fontSize: 18, fontWeight: FontWeight.w600)),
-            if (ctrl.roomCode != null) ...[
-              const SizedBox(height: 20),
-              Text('방 코드', style: TextStyle(color: t.textSecondary)),
-              const SizedBox(height: 6),
-              Text(ctrl.roomCode!,
-                  style: TextStyle(
-                      color: t.text,
-                      fontSize: 34,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 6)),
-            ],
-            const SizedBox(height: 40),
-            TextButton(onPressed: _exit, child: const Text('취소')),
-          ],
-        ),
-      );
-
-  Widget _countdown(AppTheme t) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('파트너를 만났어요!',
-                style: TextStyle(
-                    color: t.text, fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            if (ctrl.match != null)
-              Text(ctrl.match!.opponentName,
-                  style: TextStyle(color: t.textSecondary, fontSize: 15)),
-            const SizedBox(height: 20),
-            Text('${ctrl.startCountdown}',
-                style: const TextStyle(
-                    color: _coop, fontSize: 64, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 8),
-            Text('잠시 후 함께 시작합니다',
-                style: TextStyle(color: t.textSecondary, fontSize: 14)),
-          ],
-        ),
-      );
-
-  Widget _race(AppTheme t) {
-    final m = ctrl.model;
-    return Column(
-      children: [
-        _topBar(t),
-        const SizedBox(height: 4),
-        _progress(t),
-        const SizedBox(height: 8),
-        Expanded(child: _board(t, m)),
-        if (ctrl.flow == CoopFlow.finished) _resultBanner(t),
-      ],
-    );
-  }
-
-  Widget _topBar(AppTheme t) => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-        child: Row(
-          children: [
-            _iconBtn(t, Icons.close, _exit),
-            const Spacer(),
-            Text('🤝 함께 만나기',
-                style: TextStyle(
-                    color: t.text, fontSize: 16, fontWeight: FontWeight.w700)),
-            const Spacer(),
-            _iconBtn(t, flagMode ? Icons.flag : Icons.flag_outlined,
-                () => setState(() => flagMode = !flagMode),
-                highlighted: flagMode),
-          ],
-        ),
-      );
-
-  Widget _iconBtn(AppTheme t, IconData icon, VoidCallback onTap,
-          {bool highlighted = false}) =>
-      Material(
-        color: highlighted ? _coop : t.fill,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: onTap,
-          child: SizedBox(
-              width: 44,
-              height: 40,
-              child: Icon(icon,
-                  color: highlighted ? Colors.white : t.text, size: 22)),
-        ),
-      );
-
-  Widget _progress(AppTheme t) {
-    final p = ctrl.progress.clamp(0.0, 1.0);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
-        children: [
-          SizedBox(
-              width: 40,
-              child: Text('함께',
-                  style: TextStyle(
-                      color: t.textSecondary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600))),
-          const SizedBox(width: 8),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: p,
-                minHeight: 10,
-                backgroundColor: t.fill,
-                valueColor: const AlwaysStoppedAnimation(_coop),
+        if (vm.flow == CoopFlow.racing)
+          Positioned.fill(
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.bottomRight,
+                child: ItemDock(
+                  tickets: g.autoFlagTickets,
+                  isPlaying: g.state == GameState.playing && !g.stunned,
+                  usesEdgeDrawer: true,
+                  probing: probing,
+                  onProbingChanged: (v) => setState(() => probing = v),
+                  drawerBottomPadding: 40,
+                  megaphoneTickets: g.megaphoneTickets,
+                  onMegaphone: () => g.useMegaphone(),
+                ),
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          Text('${(p * 100).round()}%',
-              style: const TextStyle(
-                  color: _coop, fontSize: 13, fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
-
-  Widget _board(AppTheme t, TouchModel m) {
-    const side = 28.0; // 고정 셀 크기(Swift 30에 준함) — 보드는 화면보다 크고 팬/줌으로 본다.
-    const step = side + 1.0; // 셀 마진 0.5px 양쪽(=1px)
-    return LayoutBuilder(builder: (context, box) {
-      // 판 시작 시 내 시작점을 뷰포트 중앙으로 한 번 이동(다음 판이면 다시).
-      if (ctrl.flow == CoopFlow.racing && !_centered) {
-        _centered = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final cx = 4 + m.myStart.$2 * step + side / 2;
-          final cy = 4 + m.myStart.$1 * step + side / 2;
-          _tc.value = Matrix4.translationValues(
-              box.maxWidth / 2 - cx, box.maxHeight / 2 - cy, 0);
-        });
-      } else if (ctrl.flow == CoopFlow.searching ||
-          ctrl.flow == CoopFlow.starting) {
-        _centered = false;
-      }
-      return InteractiveViewer(
-        transformationController: _tc,
-        constrained: false, // 자식이 화면보다 커도 됨 → 오버플로 대신 팬
-        minScale: 0.3,
-        maxScale: 4,
-        boundaryMargin: const EdgeInsets.all(double.infinity),
-        child: Container(
-          padding: const EdgeInsets.all(4),
-          color: t.boardFrame,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var r = 0; r < m.size; r++)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var c = 0; c < m.size; c++) _cell(t, m, r, c, side),
-                  ],
-                ),
-            ],
-          ),
+        if (vm.flow == CoopFlow.finished && vm.result != null && !reviewing)
+          _resultOverlay(t, vm.result!),
+        if (vm.flow == CoopFlow.finished && reviewing)
+          ReviewBar(color: accent, onTap: () => setState(() => reviewing = false)),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 150),
+          child: vm.flow == CoopFlow.racing && g.stunned
+              ? const StunBanner(
+                  key: ValueKey('stun'), text: '지뢰! 잠깐 멈춤… (파트너 깃발 1개 떨어짐)', fontSize: 13)
+              : const SizedBox.shrink(),
         ),
-      );
-    });
-  }
-
-  Widget _cell(AppTheme t, TouchModel m, int r, int c, double side) {
-    final cell = m.grid[r][c];
-    final visible = m.isVisible(r, c);
-    final isMyStart = m.myStart == (r, c);
-    final isOppStart = m.oppStart == (r, c);
-    Widget? content;
-    Color bg;
-    if (!visible) {
-      bg = t.dark ? const Color(0xFF060606) : const Color(0xFF9AA0A8); // 안개
-    } else if (cell.exploded) {
-      bg = t.cellExploded;
-      content = Text('💥', style: TextStyle(fontSize: side * 0.6));
-    } else if (cell.isRevealed) {
-      bg = t.cellRevealed;
-      if (cell.adjacent > 0) {
-        content = Text('${cell.adjacent}',
-            style: TextStyle(
-                fontSize: side * 0.6,
-                fontWeight: FontWeight.w800,
-                color: minesweeperNumberColor(cell.adjacent, t.dark)));
-      }
-    } else {
-      bg = t.cellClosedTop;
-      if (cell.isFlagged) {
-        content = Icon(Icons.flag, size: side * 0.6, color: AppTheme.meColor);
-      } else if (cell.oppFlagged) {
-        content = Icon(Icons.flag, size: side * 0.6, color: AppTheme.oppColor);
-      } else if (cell.isMegaphone) {
-        content = Text('📣', style: TextStyle(fontSize: side * 0.55));
-      }
-    }
-    if (content == null && (isMyStart || isOppStart)) {
-      content = Text(isMyStart ? '🙂' : '🧑',
-          style: TextStyle(fontSize: side * 0.6));
-    }
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: visible
-          ? () {
-              if (flagMode) {
-                m.toggleFlag(r, c);
-              } else {
-                m.primaryTap(r, c);
-              }
-            }
-          : null,
-      onLongPress: visible ? () => m.toggleFlag(r, c) : null,
-      child: Container(
-        width: side,
-        height: side,
-        margin: const EdgeInsets.all(0.5),
-        alignment: Alignment.center,
-        color: bg,
-        child: content,
-      ),
+      ]),
     );
   }
 
-  Widget _resultBanner(AppTheme t) {
-    final win = ctrl.result == RaceResult.win;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
-      child: Column(
-        children: [
-          Text(win ? '만났어요! 🎉' : (ctrl.opponentLeft ? '파트너가 나갔어요' : '실패 💥'),
+  String get _searchingTitle {
+    if (vm.rematching) return '파트너를 기다리는 중…';
+    return switch (widget.mode.kind) {
+      RaceModeKind.host => '파트너 입장을 기다리는 중…',
+      RaceModeKind.join => '방에 입장 중…',
+      _ => '함께할 사람을 찾는 중…',
+    };
+  }
+
+  Widget _searching() => SearchingView(
+        title: _searchingTitle,
+        onCancel: _close,
+        rematchText: vm.rematching ? '같은 파트너와 다시 시작할게요' : null,
+        isHost: widget.mode.kind == RaceModeKind.host,
+        roomCode: vm.roomCode,
+        description: '서로 길을 뚫어 만나면 둘 다 성공이에요',
+        codeHint: '친구가 이 코드를 입력하면 함께 시작돼요',
+        shareText: (c) =>
+            '‘너에게 닿기를’ 같이 해요! 방 코드: $c\n${InviteLink.webURL(InviteGame.touch, c)}',
+      );
+
+  Widget _race(AppTheme t) {
+    final g = vm.game;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      child: Column(children: [
+        Row(children: [
+          CircleIconButton(icon: CupertinoIcons.xmark, onTap: _close),
+          const Spacer(),
+          Text(timeLabel(g.elapsed),
               style: TextStyle(
-                  color: win ? _coop : const Color(0xFFCC0D0D),
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold)),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                  child: OutlinedButton(
-                      onPressed: _exit, child: const Text('나가기'))),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: () => setState(ctrl.rematch),
-                  style: FilledButton.styleFrom(backgroundColor: _coop),
-                  child: const Text('다시하기'),
-                ),
-              ),
-            ],
+                  color: t.text, fontSize: 20, fontWeight: FontWeight.bold, fontFamily: 'Courier')),
+          const Spacer(),
+          FlagToggle(on: flagMode, onChanged: (v) => setState(() => flagMode = v)),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          const Text('🤝', style: TextStyle(fontSize: 13)),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text('${vm.opponentName}와 길을 뚫어 만나기',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: t.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
           ),
-        ],
-      ),
+          const SizedBox(width: 6),
+          TitleBadge(name: vm.opponentTitle, size: 8),
+          const Spacer(),
+          if (g.minesHit > 0)
+            Text('💣 ${g.minesHit}',
+                style: const TextStyle(
+                    color: AppTheme.raceOpp, fontSize: 12, fontWeight: FontWeight.bold)),
+        ]),
+        const SizedBox(height: 10),
+        Expanded(
+          child: TouchBoard(
+            game: g,
+            flagMode: flagMode,
+            pings: vm.pings,
+            probing: probing,
+            onProbe: (r, c) {
+              g.useAutoFlag(r, c);
+              setState(() => probing = false);
+            },
+            reveal: reviewing,
+          ),
+        ),
+      ]),
     );
   }
 
-  Widget _failure(AppTheme t, MatchError e) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline, size: 56, color: t.textSecondary),
-            const SizedBox(height: 16),
-            Text(e.message,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: t.text, fontSize: 16)),
-            const SizedBox(height: 28),
-            FilledButton(onPressed: _exit, child: const Text('나가기')),
-          ],
-        ),
-      );
+  Widget _resultOverlay(AppTheme t, RaceResult r) {
+    final win = r == RaceResult.win;
+    final best = LocalStore.shared.touchBest;
+    return ResultOverlay(
+      emoji: win ? '🤝' : '🌫️',
+      title: win ? '서로에게 닿았어요!' : '아쉽게 끝났어요',
+      titleSize: 23,
+      subtitle: vm.opponentLeft
+          ? '상대가 나가서 함께 도달하지 못했어요'
+          : (win ? '둘이 길을 이어 만났어요 🎉' : '다시 도전해 보세요'),
+      children: [
+        if (win)
+          Column(children: [
+            Text('걸린 시간 ${timeLabel(vm.game.elapsed)}',
+                style: const TextStyle(
+                    color: accent, fontSize: 16, fontWeight: FontWeight.bold)),
+            if (best != null) ...[
+              const SizedBox(height: 3),
+              Text('최고 기록 ${timeLabel(best)}',
+                  style: TextStyle(color: t.textSecondary, fontSize: 12)),
+            ],
+          ]),
+        if (win)
+          OutlineButton(
+              label: '보드 보기',
+              icon: CupertinoIcons.map_fill,
+              color: accent,
+              onTap: () => setState(() => reviewing = true)),
+        BigButton(label: '다시 하기', color: accent, onTap: vm.rematch),
+        TextLink('나가기', onTap: _close),
+      ],
+    );
+  }
 }

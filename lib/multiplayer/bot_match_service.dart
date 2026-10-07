@@ -11,7 +11,7 @@ import 'multiplayer.dart';
 ///   onRemoteBoard로 사람 화면 공유 보드에 반영되고, 사람의 동작은 pushReveal/pushFlag로
 ///   봇 미러에 반영된다.
 ///
-/// ponytail: 합동(coop) 봇은 미이식(대전 메뉴 봇 카드는 지뢰찾기 스피드/지뢰대결 전용).
+/// - 합동: 봇 파트너가 같은 보드를 함께 푼다(확정 칸만 열고 확정 지뢰엔 깃발, 추측은 사람에게).
 class BotMatchService extends MatchService {
   BotMatchService({required this.rule});
 
@@ -39,6 +39,13 @@ class BotMatchService extends MatchService {
   ];
   static const _names = ['스윕봇', '마인봇', '지뢰봇', '디텍터봇', '클리어봇', '비프봇'];
 
+  /// 봇 상대에게 붙일 임의 칭호(연출용). 일부는 미착용("").
+  static String randomBotTitle(Random rng) {
+    const pool = ['지뢰 입문자', '초급 졸업', '중급 사냥꾼', '스피드러너', '대전 새내기',
+        '연승가도', '황금손', '수집가', '', ''];
+    return pool[rng.nextInt(pool.length)];
+  }
+
   // ── 매칭(봇은 즉시 성사) ──
   @override
   Future<MatchInfo> find(Difficulty difficulty, RaceRule _) async {
@@ -50,6 +57,7 @@ class BotMatchService extends MatchService {
       safeC: difficulty.cols ~/ 2,
       opponentName: _names[_rng.nextInt(_names.length)],
       rule: rule, // 봇 규칙은 생성 시 고정
+      opponentTitle: randomBotTitle(_rng),
     );
     _info = info;
     _finishAt = _speedFinishSeconds(difficulty);
@@ -70,10 +78,13 @@ class BotMatchService extends MatchService {
     final info = _info;
     if (info == null) return;
     _stopped = false;
-    if (rule == RaceRule.score) {
-      _startBoardBot(info);
-    } else {
-      _startSpeedSim();
+    switch (rule) {
+      case RaceRule.speed:
+        _startSpeedSim();
+      case RaceRule.score:
+        _startBoardBot(info, RaceRule.score);
+      case RaceRule.coop:
+        _startBoardBot(info, RaceRule.coop);
     }
   }
 
@@ -103,6 +114,13 @@ class BotMatchService extends MatchService {
       _humanFlags.add(index);
     } else {
       _humanFlags.remove(index);
+      // 합동: 사람이 봇 깃발을 치웠으면 봇 미러에서도 내린다(되살아나지 않게).
+      if (rule == RaceRule.coop) {
+        final r = index ~/ m.cols, c = index % m.cols;
+        if (m.grid[r][c].isFlagged && m.grid[r][c].flagOwner == FlagOwner.me) {
+          m.toggleFlag(r, c);
+        }
+      }
     }
     m.applySharedState(SharedBoardState(oppFlags: _humanFlags.toList()));
   }
@@ -140,12 +158,12 @@ class BotMatchService extends MatchService {
   }
 
   // ── 지뢰 대결 — 봇이 같은 보드를 직접 플레이 ──
-  void _startBoardBot(MatchInfo info) {
+  void _startBoardBot(MatchInfo info, RaceRule boardRule) {
     _moveTimer?.cancel(); // 재대결 시 이전 판 봇을 정리
     _botModel?.dispose();
     final m = GameModel()..difficulty = info.difficulty;
     m.startSeededGame(info.seed,
-        safeR: info.safeR, safeC: info.safeC, rule: RaceRule.score, shared: true);
+        safeR: info.safeR, safeC: info.safeC, rule: boardRule, shared: true);
     m.onPushReveal = (_, _) => _emitBoard();
     m.onPushFlag = (_, _) => _emitBoard();
     _botModel = m;
@@ -163,9 +181,13 @@ class BotMatchService extends MatchService {
   void _step(double base) {
     final m = _botModel;
     if (_stopped || m == null || m.state != GameState.playing) return;
-    _botActOnce(m);
-    // 후반으로 갈수록 봇이 느려지도록 진행도 기반 배율.
-    final pace = _paceMultiplier(_botProgress(m));
+    if (rule == RaceRule.coop) {
+      _botActOnceCoop(m);
+    } else {
+      _botActOnce(m);
+    }
+    // 후반으로 갈수록 봇이 느려지도록 진행도 기반 배율(합동은 일정 속도).
+    final pace = rule == RaceRule.coop ? 1.0 : _paceMultiplier(_botProgress(m));
     final jitter = 0.75 + _rng.nextDouble() * (1.6 - 0.75);
     final delayMs = (base * pace * jitter * 1000).round();
     _moveTimer = Timer(Duration(milliseconds: delayMs), () => _step(base));
@@ -188,6 +210,26 @@ class BotMatchService extends MatchService {
       } else {
         final mine = _unclaimedMine(m);
         if (mine != null) _claim(mine, m);
+      }
+    }
+  }
+
+  /// 합동 봇 한 수 — 확정된 안전 칸만 연다. 확정 지뢰엔 깃발을 꽂아 사람이 피하게 한다.
+  /// 추측은 하지 않는다(빗나가면 둘 다 패배). 막히면 사람이 결정할 때까지 기다린다.
+  void _botActOnceCoop(GameModel m) {
+    final (safe, mines) = _deductions(m);
+    for (final s in safe) {
+      final c = m.grid[s[0]][s[1]];
+      if (!c.isRevealed && !c.isFlagged) {
+        m.reveal(s[0], s[1]);
+        return;
+      }
+    }
+    for (final x in mines) {
+      final c = m.grid[x[0]][x[1]];
+      if (!c.isFlagged && c.flagOwner == null) {
+        _claim(x, m);
+        return;
       }
     }
   }

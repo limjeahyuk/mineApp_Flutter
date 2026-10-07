@@ -17,7 +17,7 @@ class Haptics {
     } catch (_) {}
   }
 
-  static void tap() => _safe(HapticFeedback.selectionClick);
+  static void tap() => _safe(HapticFeedback.lightImpact);
   static void flagTap() {
     if (!isFlagEnabled) return;
     try {

@@ -1,7 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 
+import 'package:flutter/foundation.dart';
+
 import '../core/auth_service.dart';
+import '../core/local_store.dart';
+import '../core/ui.dart';
 
 /// 운영 선물 한 건 — Firestore `mailGifts` 문서 1:1. Swift MailGift 이식.
 /// 작성은 콘솔(어드민), 앱은 읽기만 + "받기"로 로컬 지급.
@@ -38,7 +42,7 @@ class MailGift {
   /// "🪙 500 · 🚩 3" 요약(0인 항목 생략).
   String get rewardSummary {
     final parts = <String>[];
-    if (coins > 0) parts.add('🪙 $coins');
+    if (coins > 0) parts.add('🪙 ${fmt(coins)}');
     if (flags > 0) parts.add('🚩 $flags');
     if (megaphones > 0) parts.add('📢 $megaphones');
     if (radars > 0) parts.add('📡 $radars');
@@ -91,5 +95,34 @@ class MailService {
     }
     items.sort((a, b) => b.date.compareTo(a.date));
     return items;
+  }
+}
+
+/// 선물함 상태 — 목록·수령 여부·안 받음 뱃지. Swift MailStore 이식.
+class MailStore extends ChangeNotifier {
+  MailStore._();
+  static final shared = MailStore._();
+
+  List<MailGift> gifts = [];
+
+  bool isClaimed(String id) => LocalStore.shared.isMailClaimed(id);
+  bool get hasUnclaimed => gifts.any((g) => !isClaimed(g.id));
+
+  /// 실패해도 조용히 기존 목록 유지.
+  Future<void> reload() async {
+    try {
+      gifts = await MailService().fetchActive();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// 아직 안 받았을 때만 지급 + 수령 표시. 지급했으면 true.
+  bool claim(MailGift g) {
+    if (isClaimed(g.id)) return false;
+    LocalStore.shared.grantMailReward(
+        coins: g.coins, flags: g.flags, megaphones: g.megaphones, radars: g.radars);
+    LocalStore.shared.markMailClaimed(g.id);
+    notifyListeners();
+    return true;
   }
 }
