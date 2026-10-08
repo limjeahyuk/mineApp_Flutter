@@ -10,5 +10,8 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<!-- Swift 판(App Store 1.0.1)에 있던 권한. ASC 가 이 앱에 Game Center 를 켜 둬서 빠지면 심사 제출이 막힌다. 아직 GC 기능은 안 씀. -->
+	<key>com.apple.developer.game-center</key>
+	<true/>
 </dict>
 </plist>

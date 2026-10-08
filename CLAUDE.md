@@ -22,6 +22,7 @@
 - **Xcode 27 + Swift Package Manager(CocoaPods 제거)**: Xcode 27은 아카이브 중 빌드 스크립트(rsync)가 pod·Flutter 엔진의 바이너리를 여는 걸 `Operation not permitted`로 막는다(터미널에선 정상, 보안 SW 없음 — 실측). 그래서 iOS 의존성은 SPM으로 받는다: `pubspec.yaml`의 `flutter: config: enable-swift-package-manager: true`(전역 `flutter config`보다 우선). Podfile/Pods는 없음 — 다시 만들지 말 것. 네이티브 플러그인은 전부 SPM 지원(path_provider_foundation은 FFI라 네이티브 없음). 새 플러그인 추가 시 `Package.swift` 지원 여부 확인. (예전 'SPM 금지'는 Xcode 16.2 한정 문제였음)
 - Flutter 엔진 dSYM 복사(release_unpack_ios)도 같은 이유로 막혔음 → Mac에서 `.../engine/ios-release/Flutter.xcframework/ios-arm64/dSYMs`를 치워 두면 그 단계를 건너뛴다(엔진 크래시 심볼만 빠짐, 업로드 경고는 무시 가능).
 - **rsync가 Flutter 엔진 바이너리(`Flutter.framework/Flutter`)를 간헐적으로 못 연다**(`open (2) ... Operation not permitted`, 터미널·Homebrew rsync도 동일 — cp/cat/ditto는 항상 정상). 그래서 `ios/scripts/rsync` shim(실패 시 ditto 폴백)을 두고, scheme pre-action(prepare)과 Runner의 두 Flutter 스크립트 단계 맨 앞에서 `export PATH="$SRCROOT/scripts:$PATH"`. 지우지 말 것. flutter CLI 자체도 Runner.app을 rsync하므로 CLI 실행은 `PATH="$PWD/ios/scripts:$PATH" flutter run -d <id>`.
+- **App Store 기존 앱과 맞춰야 하는 것**(어기면 ASC가 심사 제출을 막음): iPhone 전용 `TARGETED_DEVICE_FAMILY = "1"`(Swift 판과 동일 — "1,2"면 13" iPad 스크린샷 요구), Game Center 권한 `com.apple.developer.game-center`(Swift 판에 있었고 ASC에 GC가 켜져 있음, 기능은 미사용).
 - **Firebase Auth엔 Keychain Sharing 필수**: `ios/Runner/Runner.entitlements`(keychain-access-groups) + pbxproj `CODE_SIGN_ENTITLEMENTS`. deployment target 15.0.
 - 익명 인증/매칭은 `flutter run`으로만 동작(entitlement 임베드됨). `simctl install`한 빌드는 keychain 막혀 인증 전부 실패.
 
