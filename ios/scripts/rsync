@@ -1,0 +1,15 @@
+#!/bin/sh
+# Xcode 27 / macOS 27: rsync(openrsync·Homebrew 둘 다)가 Flutter 엔진 바이너리
+# (Flutter.framework/Flutter)를 열 때 간헐적으로 "Operation not permitted"로 막힌다.
+# cp/ditto는 항상 된다. Flutter 빌드 스크립트가 PATH에서 이 파일을 먼저 찾게 해 두고,
+# 진짜 rsync가 실패하면 마지막 두 인자(SRC DEST)를 ditto로 복사한다.
+# Flutter의 rsync 호출은 전부 "옵션들 SRC DEST" 형태(--delete 포함)라 이것만 흉내 낸다.
+/usr/bin/rsync "$@" && exit 0
+
+for a; do src=$dst; dst=$a; done
+case $src in
+  */) target=$dst ;;                       # SRC/ → 내용물을 DEST로
+  *) target=${dst%/}/$(basename "$src") ;; # SRC  → DEST/SRC이름
+esac
+echo "rsync failed; falling back to ditto: $src -> $target" >&2
+rm -rf "$target" && mkdir -p "$(dirname "$target")" && ditto "$src" "$target"
