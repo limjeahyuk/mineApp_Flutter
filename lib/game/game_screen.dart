@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -15,7 +16,7 @@ import 'confetti.dart';
 import 'item_dock.dart';
 
 /// 솔로 게임 화면 — Swift ContentView 이식.
-/// 상단 바(홈·난이도·⋯) + 헤더(지뢰 카운터·얼굴·확대·깃발·타이머) + 보드 + 안내문구.
+/// 상단 바(홈·난이도·⋯) + 헤더(지뢰 카운터·얼굴·타이머) + 보드 + 안내문구 + 떠 있는 깃발 버튼.
 /// 가로(최고급)면 얇은 헤더바 한 줄 + 꽉 찬 보드. 패배/클리어/이어하기 팝업, 판 코드 시트.
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key, this.initialDifficulty = Difficulty.beginner});
@@ -32,7 +33,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   final _coinToast = ToastController();
 
   bool flagMode = false; // 깃발 모드: 탭=깃발, 길게=칸 열기
-  bool boardZoomed = false; // 확대 모드
+  Offset? _flagPos; // 떠 있는 깃발 버튼 위치(드래그로 이동, null=기본 우하단)
+  bool _flagDocked = false; // 오른쪽 가장자리 손잡이로 접힘
+  bool _flagDragging = false; // 드래그 중엔 위치 애니메이션 끔
+  Offset _flagDrag = Offset.zero; // 이번 드래그 누적 이동량(오른쪽 스와이프 판정)
   bool probing = false; // 자동깃발 발동 대기
   bool showLossPopup = false;
   bool showWinPopup = false;
@@ -178,10 +182,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   bool get _anyPopupShowing =>
       showLossPopup || showWinPopup || pendingResume != null;
 
-  bool get _itemUsesEdgeDrawer =>
-      game.difficulty == Difficulty.expert ||
-      game.difficulty == Difficulty.ultimate;
-
   bool _isCompact(BuildContext c) {
     final size = MediaQuery.of(c).size;
     return size.width > size.height && size.height < 500;
@@ -209,19 +209,23 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 ),
                 if (!_anyPopupShowing)
                   SafeArea(
-                    child: Stack(children: [
-                      ItemDock(
-                        solo: true,
-                        tickets: game.autoFlagTickets,
-                        isPlaying: game.state == GameState.playing,
-                        usesEdgeDrawer: _itemUsesEdgeDrawer,
-                        drawerBottomPadding: compact ? 40 : 96,
-                        probing: probing,
-                        onProbingChanged: (v) => setState(() => probing = v),
-                        radarTickets: game.radarTickets,
-                        onRadar: _fireRadar,
-                      ),
-                    ]),
+                    child: Stack(
+                      children: [
+                        _floatingFlag(t),
+                        ItemDock(
+                          solo: true,
+                          tickets: game.autoFlagTickets,
+                          isPlaying: game.state == GameState.playing,
+                          drawerBottomPadding: compact
+                              ? 130
+                              : 150, // 아래 깃발 버튼(기본 우하단)과 안 겹치게
+                          probing: probing,
+                          onProbingChanged: (v) => setState(() => probing = v),
+                          radarTickets: game.radarTickets,
+                          onRadar: _fireRadar,
+                        ),
+                      ],
+                    ),
                   ),
                 if (showLossPopup) _lossPopup(t),
                 if (showWinPopup) _winPopup(t),
@@ -285,13 +289,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   }
 
   Widget _boardArea() => BoardWidget(
-        game: game,
-        flagMode: flagMode,
-        zoomedIn: boardZoomed,
-        onZoomChanged: (z) => setState(() => boardZoomed = z),
-        probing: probing,
-        onProbe: _handleProbe,
-      );
+    game: game,
+    flagMode: flagMode,
+    probing: probing,
+    onProbe: _handleProbe,
+  );
 
   // MARK: 상단 바 (홈 버튼 + 난이도 + ⋯ 메뉴)
 
@@ -338,7 +340,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     );
   }
 
-  // MARK: 헤더 (지뢰 카운터 / 얼굴 / 확대 / 깃발 / 타이머)
+  // MARK: 헤더 (지뢰 카운터 / 얼굴 / 타이머)
 
   Widget _header(AppTheme t) {
     final dense = _dense;
@@ -347,12 +349,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         _counter(t, game.minesRemaining, dense: dense),
         const Spacer(),
         _faceButton(t, dense: dense),
-        SizedBox(width: dense ? 8 : 12),
-        _zoomButton(t, dense: dense),
-        SizedBox(width: dense ? 8 : 12),
-        _flagButton(t, dense: dense),
         const Spacer(),
-        _counter(t, game.elapsed, dense: dense),
+        _counter(t, game.elapsed, dense: dense, timer: true),
       ],
     );
   }
@@ -370,7 +368,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         : n.toString().padLeft(3, '0');
   }
 
-  Widget _counter(AppTheme t, int value, {bool dense = false}) {
+  Widget _counter(
+    AppTheme t,
+    int value, {
+    bool dense = false,
+    bool timer = false,
+  }) {
     return Container(
       padding: EdgeInsets.symmetric(
           horizontal: dense ? 8 : 12, vertical: dense ? 4 : 6),
@@ -379,15 +382,17 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: t.fillElevated),
       ),
-      child: Text(_fmt3(value),
-          style: TextStyle(
-            color: AppTheme.ledRed,
-            fontSize: dense ? 18 : 26,
-            fontWeight: FontWeight.bold,
-            fontFamily: 'Menlo',
-            fontFamilyFallback: const ['Courier', 'monospace'],
-            fontFeatures: const [FontFeature.tabularFigures()],
-          )),
+      child: Text(
+        timer ? game.difficulty.formatTimer(value) : _fmt3(value),
+        style: TextStyle(
+          color: AppTheme.ledRed,
+          fontSize: dense ? 18 : 26,
+          fontWeight: FontWeight.bold,
+          fontFamily: 'Menlo',
+          fontFamilyFallback: const ['Courier', 'monospace'],
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
     );
   }
 
@@ -411,88 +416,148 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _toggleButton(AppTheme t,
-      {required bool on,
-      required IconData icon,
-      required double iconSize,
-      required double w,
-      required double h,
-      required Color onFill,
-      required Color onStroke,
-      double radius = 10,
-      bool glow = false,
-      required VoidCallback onTap}) {
-    return PlainButton(
-      onTap: () {
-        Haptics.tap();
-        onTap();
+  static const _flagOnStroke = Color.fromRGBO(255, 140, 115, 1);
+  static const _flagSize = 56.0;
+
+  /// 떠 있는 원형 깃발 버튼 — 탭=깃발 모드 토글, 드래그=위치 이동.
+  /// 오른쪽으로 끌면 오른쪽 가장자리 손잡이로 쏙 들어가고(색=깃발 모드 상태), 손잡이를 탭하면 다시 나온다.
+  Widget _floatingFlag(AppTheme t) {
+    const handleW = 26.0;
+    return LayoutBuilder(
+      builder: (context, box) {
+        final max = Offset(box.maxWidth - _flagSize, box.maxHeight - _flagSize);
+        final pos = _flagPos ?? Offset(max.dx - 16, max.dy - 60);
+        final y = pos.dy.clamp(0, max.dy).toDouble();
+        final onFill = flagMode ? AppTheme.dangerRed : t.fillElevated;
+        final onBorder = flagMode ? _flagOnStroke : t.border;
+        final onIcon = flagMode ? Colors.white : t.textSecondary;
+        return Stack(
+          children: [
+            AnimatedPositioned(
+              duration: _flagDragging
+                  ? Duration.zero
+                  : const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              left: _flagDocked ? box.maxWidth - handleW : pos.dx,
+              top: y,
+              child: _flagDocked
+                  ? GestureDetector(
+                      onTap: () {
+                        Haptics.tap();
+                        setState(() {
+                          _flagDocked = false;
+                          _flagPos = Offset(max.dx - 16, y);
+                        });
+                      },
+                      onVerticalDragUpdate: (d) => setState(
+                        () => _flagPos = Offset(
+                          pos.dx,
+                          (y + d.delta.dy).clamp(0, max.dy),
+                        ),
+                      ),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        width: handleW,
+                        height: _flagSize,
+                        decoration: BoxDecoration(
+                          color: onFill,
+                          borderRadius: const BorderRadius.horizontal(
+                            left: Radius.circular(12),
+                          ),
+                          border: Border.all(color: onBorder, width: 1.5),
+                        ),
+                        child: Icon(Icons.flag, size: 15, color: onIcon),
+                      ),
+                    )
+                  // 기본 드래그 시작 거리(36pt)는 짧은 스와이프를 놓쳐서 줄인다.
+                  : MediaQuery(
+                      data: MediaQuery.of(context).copyWith(
+                        gestureSettings: const DeviceGestureSettings(
+                          touchSlop: 6,
+                        ),
+                      ),
+                      child: GestureDetector(
+                        onPanStart: (_) => setState(() {
+                          _flagDragging = true;
+                          _flagDrag = Offset.zero;
+                        }),
+                        onPanUpdate: (d) => setState(() {
+                          _flagDrag += d.delta;
+                          final p = pos + d.delta;
+                          _flagPos = Offset(
+                            p.dx.clamp(0, max.dx).toDouble(),
+                            p.dy.clamp(0, max.dy).toDouble(),
+                          );
+                        }),
+                        // 오른쪽으로 끈 드래그(가로 우세)면 손잡이로 접는다.
+                        onPanEnd: (d) => setState(() {
+                          _flagDragging = false;
+                          if (_flagDrag.dx > 24 &&
+                              _flagDrag.dx > _flagDrag.dy.abs()) {
+                            _flagDocked = true;
+                          }
+                        }),
+                        child: PlainButton(
+                          onTap: () {
+                            Haptics.tap();
+                            setState(() => flagMode = !flagMode);
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            width: _flagSize,
+                            height: _flagSize,
+                            decoration: BoxDecoration(
+                              color: onFill,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: onBorder, width: 1.5),
+                              boxShadow: [
+                                BoxShadow(
+                                  color:
+                                      (flagMode
+                                              ? AppTheme.dangerRed
+                                              : Colors.black)
+                                          .withValues(alpha: 0.35),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Icon(Icons.flag, size: 27, color: onIcon),
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
+          ],
+        );
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        width: w,
-        height: h,
-        decoration: BoxDecoration(
-          color: on ? onFill : t.fillElevated,
-          borderRadius: BorderRadius.circular(radius),
-          border: Border.all(color: on ? onStroke : t.border, width: 1.5),
-          boxShadow: glow && on
-              ? [BoxShadow(color: onFill.withValues(alpha: 0.5), blurRadius: 6)]
-              : null,
-        ),
-        child: Icon(icon,
-            size: iconSize, color: on ? Colors.white : t.textSecondary),
-      ),
     );
   }
-
-  static const _zoomOnFill = AppTheme.accentBlue;
-  static const _zoomOnStroke = Color.fromRGBO(115, 166, 255, 1);
-  static const _flagOnFill = AppTheme.dangerRed;
-  static const _flagOnStroke = Color.fromRGBO(255, 140, 115, 1);
-
-  Widget _zoomButton(AppTheme t, {bool dense = false}) => _toggleButton(t,
-      on: boardZoomed,
-      icon: boardZoomed ? Icons.zoom_out : Icons.zoom_in,
-      iconSize: dense ? 18 : 23,
-      w: dense ? 44 : 50,
-      h: dense ? 36 : 50,
-      onFill: _zoomOnFill,
-      onStroke: _zoomOnStroke,
-      onTap: () => setState(() => boardZoomed = !boardZoomed));
-
-  Widget _flagButton(AppTheme t, {bool dense = false}) => _toggleButton(t,
-      on: flagMode,
-      icon: Icons.flag,
-      iconSize: dense ? 18 : 25,
-      w: dense ? 44 : 50,
-      h: dense ? 36 : 50,
-      onFill: _flagOnFill,
-      onStroke: _flagOnStroke,
-      glow: true,
-      onTap: () => setState(() => flagMode = !flagMode));
 
   // MARK: 얇은 헤더바 (가로 전용)
 
   Widget _compactBar(AppTheme t) {
-    Widget smallCounter(int v) => Container(
-          height: 30,
-          padding: const EdgeInsets.symmetric(horizontal: 7),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(5),
-            border: Border.all(color: t.fillElevated),
-          ),
-          child: Text(_fmt3(v),
-              style: const TextStyle(
-                color: AppTheme.ledRed,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'Menlo',
-                fontFamilyFallback: ['Courier', 'monospace'],
-                fontFeatures: [FontFeature.tabularFigures()],
-              )),
-        );
+    Widget smallCounter(int v, {bool timer = false}) => Container(
+      height: 30,
+      padding: const EdgeInsets.symmetric(horizontal: 7),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: t.fillElevated),
+      ),
+      child: Text(
+        timer ? game.difficulty.formatTimer(v) : _fmt3(v),
+        style: const TextStyle(
+          color: AppTheme.ledRed,
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+          fontFamily: 'Menlo',
+          fontFamilyFallback: ['Courier', 'monospace'],
+          fontFeatures: [FontFeature.tabularFigures()],
+        ),
+      ),
+    );
     Widget square(IconData icon, VoidCallback onTap) => PlainButton(
           onTap: onTap,
           child: Container(
@@ -526,30 +591,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
             child: Text(_face, style: const TextStyle(fontSize: 18)),
           ),
         ),
-        const SizedBox(width: 7),
-        _toggleButton(t,
-            on: flagMode,
-            icon: Icons.flag,
-            iconSize: 17,
-            w: 40,
-            h: 32,
-            radius: 8,
-            onFill: _flagOnFill,
-            onStroke: _flagOnStroke,
-            onTap: () => setState(() => flagMode = !flagMode)),
-        const SizedBox(width: 7),
-        _toggleButton(t,
-            on: boardZoomed,
-            icon: boardZoomed ? Icons.zoom_out : Icons.zoom_in,
-            iconSize: 17,
-            w: 40,
-            h: 32,
-            radius: 8,
-            onFill: _zoomOnFill,
-            onStroke: _zoomOnStroke,
-            onTap: () => setState(() => boardZoomed = !boardZoomed)),
         const Spacer(),
-        smallCounter(game.elapsed),
+        smallCounter(game.elapsed, timer: true),
         const SizedBox(width: 7),
         square(Icons.more_horiz, () {
           Haptics.tap();

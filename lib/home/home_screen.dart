@@ -453,7 +453,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           onTap: () {
                             Haptics.tap();
                             Navigator.pop(ctx);
-                            pushGameWithOnboarding(context, OnboardKind.solo,
+                            pushGame(context,
                                 () => GameScreen(initialDifficulty: d),
                                 landscape: d.prefersLandscape);
                           },

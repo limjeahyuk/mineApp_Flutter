@@ -103,6 +103,9 @@ class GameModel extends ChangeNotifier {
   int Function() radarSupplier = () => 0;
   void Function()? onConsumeRadar;
 
+  /// 봇 미러 보드는 false — 이긴 판을 사용자 판 코드 최고기록에 남기지 않는다.
+  bool recordsWins = true;
+
   final Set<int> _goldenAwarded = {};
   SoloWinResult? soloWinResult;
 
@@ -627,7 +630,7 @@ class GameModel extends ChangeNotifier {
     state = GameState.won;
     _stopTimer();
     if (rule != RaceRule.speed) return;
-    if (!_didContinue) {
+    if (!_didContinue && recordsWins) {
       _recordWin();
       if (_isSolo) {
         onSoloWin?.call(difficulty, elapsed, !usedAutoFlagThisGame);
@@ -835,7 +838,7 @@ class GameModel extends ChangeNotifier {
   void _startTimer() {
     _stopTimer();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (state == GameState.playing && elapsed < 999) {
+      if (state == GameState.playing && elapsed < difficulty.timerMax) {
         elapsed += 1;
         notifyListeners();
       }

@@ -197,10 +197,6 @@ class LocalStore extends ChangeNotifier {
   void dismissNoticeForToday(String id) =>
       _prefs.setString('notice.dismissedToday.$id', todayKey());
 
-  // ── 연습 보드(첫 진입 온보딩) 본 적 있는지 ──
-  bool onboarded(String kind) => _prefs.getBool('onboarded.$kind') ?? false;
-  void markOnboarded(String kind) => _prefs.setBool('onboarded.$kind', true);
-
   // ── 일일 도전과제(저장만; 카탈로그는 progression/daily.dart) ──
   void _rollOverDailyIfNeeded() {
     if (_prefs.getString(_kDailyDay) == todayKey()) return;

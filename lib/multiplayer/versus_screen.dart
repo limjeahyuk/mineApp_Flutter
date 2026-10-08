@@ -33,7 +33,6 @@ class _VersusScreenState extends State<VersusScreen>
           : FirebaseMatchService(kind: 'mine'));
   // 대전은 시작 시 첫 칸이 이미 열려 있으므로 깃발 모드를 기본값으로 둔다.
   bool flagMode = true;
-  bool boardZoomed = false;
   bool probing = false;
   RaceFlow _lastFlow = RaceFlow.searching;
   Difficulty? _lastDiff;
@@ -120,8 +119,6 @@ class _VersusScreenState extends State<VersusScreen>
                       ItemDock(
                         tickets: g.autoFlagTickets,
                         isPlaying: g.state == GameState.playing,
-                        usesEdgeDrawer: g.difficulty == Difficulty.expert ||
-                            g.difficulty == Difficulty.ultimate,
                         probing: probing,
                         onProbingChanged: (v) => setState(() => probing = v),
                         drawerBottomPadding:
@@ -209,8 +206,6 @@ class _VersusScreenState extends State<VersusScreen>
             child: BoardWidget(
               game: vm.game,
               flagMode: flagMode,
-              zoomedIn: boardZoomed,
-              onZoomChanged: (z) => setState(() => boardZoomed = z),
               probing: probing,
               onProbe: _handleProbe,
             ),
@@ -231,7 +226,6 @@ class _VersusScreenState extends State<VersusScreen>
   }
 
   Widget _raceTopBar(AppTheme t) {
-    final e = vm.game.elapsed.clamp(0, 999);
     return Column(
       children: [
         Row(
@@ -242,7 +236,7 @@ class _VersusScreenState extends State<VersusScreen>
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                   color: Colors.black, borderRadius: BorderRadius.circular(6)),
-              child: Text(e.toString().padLeft(3, '0'),
+              child: Text(vm.game.difficulty.formatTimer(vm.game.elapsed),
                   style: const TextStyle(
                       color: AppTheme.ledRed,
                       fontSize: 22,
@@ -292,6 +286,15 @@ class _VersusScreenState extends State<VersusScreen>
             color: kRaceOpp,
             score: _isScoreMode ? vm.opponentScore : null,
           ),
+          // 스피드: 상대가 지뢰를 밟아도 판은 안 끝난다 — 끝까지 풀면 이긴다는 걸 알려 준다.
+          if (!_isScoreMode && vm.opponent.phase == RacerPhase.lost) ...[
+            const SizedBox(height: 6),
+            Text('💥 상대가 지뢰를 밟았어요 · 끝까지 풀면 승리!',
+                style: TextStyle(
+                    color: t.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
+          ],
         ],
       ],
     );
@@ -313,7 +316,8 @@ class _VersusScreenState extends State<VersusScreen>
         RaceResult.draw => '같은 수를 찾았어요 ($me : $opp)',
       };
     }
-    return r == RaceResult.win ? '상대보다 먼저 클리어했어요' : '상대가 먼저 끝냈어요';
+    if (r == RaceResult.win) return '상대보다 먼저 클리어했어요';
+    return vm.game.state == GameState.lost ? '지뢰를 밟았어요' : '상대가 먼저 끝냈어요';
   }
 
   String _resultEmoji(RaceResult r) {
@@ -348,10 +352,7 @@ class _VersusScreenState extends State<VersusScreen>
           FilledWideButton(
             label: _isCoop ? '다시 하기' : '다시 매칭',
             onTap: () {
-              setState(() {
-                flagMode = true;
-                boardZoomed = false;
-              });
+              setState(() => flagMode = true);
               vm.rematch();
             },
           ),

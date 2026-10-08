@@ -21,6 +21,7 @@
 
 - **Xcode 27 + Swift Package Manager(CocoaPods 제거)**: Xcode 27은 아카이브 중 빌드 스크립트(rsync)가 pod·Flutter 엔진의 바이너리를 여는 걸 `Operation not permitted`로 막는다(터미널에선 정상, 보안 SW 없음 — 실측). 그래서 iOS 의존성은 SPM으로 받는다: `pubspec.yaml`의 `flutter: config: enable-swift-package-manager: true`(전역 `flutter config`보다 우선). Podfile/Pods는 없음 — 다시 만들지 말 것. 네이티브 플러그인은 전부 SPM 지원(path_provider_foundation은 FFI라 네이티브 없음). 새 플러그인 추가 시 `Package.swift` 지원 여부 확인. (예전 'SPM 금지'는 Xcode 16.2 한정 문제였음)
 - Flutter 엔진 dSYM 복사(release_unpack_ios)도 같은 이유로 막혔음 → Mac에서 `.../engine/ios-release/Flutter.xcframework/ios-arm64/dSYMs`를 치워 두면 그 단계를 건너뛴다(엔진 크래시 심볼만 빠짐, 업로드 경고는 무시 가능).
+- **rsync가 Flutter 엔진 바이너리(`Flutter.framework/Flutter`)를 간헐적으로 못 연다**(`open (2) ... Operation not permitted`, 터미널·Homebrew rsync도 동일 — cp/cat/ditto는 항상 정상). 그래서 `ios/scripts/rsync` shim(실패 시 ditto 폴백)을 두고, scheme pre-action(prepare)과 Runner의 두 Flutter 스크립트 단계 맨 앞에서 `export PATH="$SRCROOT/scripts:$PATH"`. 지우지 말 것. flutter CLI 자체도 Runner.app을 rsync하므로 CLI 실행은 `PATH="$PWD/ios/scripts:$PATH" flutter run -d <id>`.
 - **Firebase Auth엔 Keychain Sharing 필수**: `ios/Runner/Runner.entitlements`(keychain-access-groups) + pbxproj `CODE_SIGN_ENTITLEMENTS`. deployment target 15.0.
 - 익명 인증/매칭은 `flutter run`으로만 동작(entitlement 임베드됨). `simctl install`한 빌드는 keychain 막혀 인증 전부 실패.
 
@@ -37,18 +38,19 @@
 - **UI 규약(core/ui.dart)**: SwiftUI 표현을 흉내 — `presentSheet`(=.sheet, CupertinoSheetRoute) + `SheetScaffold`(inline 제목+우상단 "닫기"), `presentFullScreen`(=.fullScreenCover), `presentMediumSheet`(=.presentationDetents medium), `fadeRoute`(홈↔게임 0.25초 크로스페이드), `PlainButton`(=.buttonStyle(.plain), 물결 없음), `ToastController/ToastOverlay`(검은 캡슐 토스트), `showAppAlert`/`showConfirmSheet`(Cupertino alert/action sheet), `SegmentedPicker`, `timeLabel`/`formatNumber`. 새 화면도 이 규약을 따른다.
 - 모드: 솔로 `game_screen`, 대전(스피드/점수) `multiplayer/`, 협동 `modes/touch_model`, 보물찾기 `modes/treasure_model`.
 - 명령: `flutter run -d <id>`, `flutter test`.
+- **포맷 주의**: 기존 코드는 옛(short) 스타일이다. `dart format`(3.7+ tall 스타일)을 `lib` 전체나 기존 파일에 돌리면 수천 줄이 바뀐다 — 디렉터리 단위 포맷 금지. 필요하면 손댄 파일만 `dart format --language-version=3.6 <파일>`.
 
 ## 솔로 게임 화면(game_screen) — Swift ContentView 이식
-- 상단바(홈·난이도·⋯=판 코드 시트) + 헤더(LED 카운터 %03d·얼굴=같은 판 재시작·확대 2.5배·깃발 모드) + 보드 + 상태 문구. 고급은 dense 레이아웃, 가로(최고급)는 얇은 헤더바.
+- 상단바(홈·난이도·⋯=판 코드 시트) + 헤더(LED 카운터 %03d, 타이머는 고급부터 4자리 `Difficulty.formatTimer`·가운데 얼굴 이모지=같은 판 재시작) + 보드 + 상태 문구 + **떠 있는 원형 깃발 버튼**(`_floatingFlag`: 탭=깃발 모드, 드래그 이동, 기본 우하단, 오른쪽으로 끌면 오른쪽 가장자리 손잡이로 접힘·색=모드 상태·탭하면 다시 나옴). 고급은 dense 레이아웃, 가로(최고급)는 얇은 헤더바.
 - 패배 팝업(이어하기/새 판/보드 보기), 클리어 팝업(색종이·신기록 배지·전체 등수 조회·한 번 더/홈으로/결과 보기), 이어하기 팝업(앱 종료 후 복원 — `makeResumeSnapshot/restore`, 백그라운드 진입 시 저장).
 - 클리어 보상 코인(`LocalStore.clearReward`), 황금지뢰 +10코인 + 상단 토스트. 판 코드별 최고기록은 `LocalStore.bestTimeForCode`.
-- 셀 제스처: 탭/길게(0.3초). probing 중엔 **어떤 탭이든** onProbe(실패하면 그냥 해제). 보드 확대는 `BoardWidget(zoomedIn,onZoomChanged)` 버튼↔핀치 동기화.
+- 셀 제스처: 탭/길게(0.3초). probing 중엔 **어떤 탭이든** onProbe(실패하면 그냥 해제). 보드 확대는 핀치만(확대 버튼 없음).
 
 ## 아이템(레이더·자동깃발·확성기)
 - 로직은 `game_model.dart`(`useRadar`/`useAutoFlag`, 티켓=min(보유, 상한)). 상한: 레이더 `Difficulty.radarCap`(초1·중1·고2·최고3), 자동깃발 솔로 `soloAutoFlagCap`(초3·중3·고5·최고7)·타모드 3. 확성기는 협동 전용.
 - 인벤토리: `LocalStore.ownedFlags/ownedRadars/ownedMegaphones`(시작지급 10/5/5).
 - 배선: 솔로는 game_screen, 대전/보물/협동은 각 컨트롤러 생성자에서 LocalStore에 연결(startSolo/startShared 전에 — 거기서 티켓 계산).
-- UI: `item_dock.dart` = Swift AutoFlagDock(+솔로 변형 `solo:true`). 초급·중급=우하단 플로팅, 고급·최고급·보물·협동=우측 엣지 서랍(손잡이 드래그 이동). Stack 안에 `Positioned`로 들어간다.
+- UI: `item_dock.dart` = Swift AutoFlagDock(+솔로 변형 `solo:true`). 모든 난이도·모드 우측 엣지 서랍(손잡이 드래그 이동) — 플로팅 버튼 없음. Stack 안에 `Positioned`로 들어간다.
 
 ## 상점(코인·가챠) — 이식됨
 - `shop/shop_screen.dart`(뽑기/충전 2탭, initialTab 0=뽑기 1=충전 — 홈 코인칩=충전, 가방=뽑기), `shop/shop_logic.dart`(draw/drawTriple, 균등 1/3, 잭팟=×3 전부 일치 시 전 아이템 3개씩). ×3은 슬롯 3릴 순차 정지 연출.
@@ -113,8 +115,9 @@
 
 ## 봇과 대전 — 이식됨(지뢰찾기: 스피드·지뢰 대결·합동)
 - `multiplayer/bot_match_service.dart`(MatchService 구현). Swift BotMatchService 이식.
-  - 스피드: 시간 기반 상대 시뮬(난이도별 목표 시각 speedFinishSeconds에 완료, 초급≈35초·최고급≈14분).
-  - 지뢰 대결: 봇이 같은 시드 보드의 미러(GameModel)를 직접 플레이 — 열린 숫자만으로 추론(deductions), 확정 지뢰는 flagBias 확률로 차지, 막히면 frontier 안전칸 확장. onRemoteBoard로 사람 화면 공유 보드에 반영, 사람 동작은 pushReveal/pushFlag로 봇 미러에 반영. turnInterval+paceMultiplier(후반 감속)로 난이도 조절.
+  - 공통 두뇌 `multiplayer/bot_solver.dart`(BotSolver): 정답을 안 보고 열린 숫자만으로 추론(단일 규칙 + 부분집합 규칙=1-2-1 등), 막히면 경계 배치 열거로 가장 안전한 칸을 찍음. 테스트 `test/bot_solver_test.dart`.
+  - 스피드: 봇이 같은 시드 자기 보드를 직접 풂(`_speedStep`, 생각 시간 `_speedThink`=초급4·중급3.5·고급3·최고급2.5초(×0.75~1.6) → 평균 완주 초급≈1분15초·중급≈5분30초·고급≈12분50초·최고급≈20분, 실측은 bot_solver_test가 출력). **찍을 땐 항상 안전칸(`_safeGuess`) — 스피드 봇은 탈락하지 않음**(사용자 요청). 대신 찍는 수는 7~10초 더 망설임.
+  - 지뢰 대결: 봇이 같은 시드 보드의 미러(GameModel)를 직접 플레이 — BotSolver로 추론, 확정 지뢰는 flagBias 확률로 차지, 막히면 찍음(지뢰면 감점). onRemoteBoard로 사람 화면 공유 보드에 반영, 사람 동작은 pushReveal/pushFlag로 봇 미러에 반영. turnInterval+paceMultiplier(후반 감속)로 난이도 조절.
   - 합동: 봇 파트너가 확정 안전칸만 열고 확정 지뢰엔 깃발(추측 안 함).
 - 배선: `RaceMode.bot(difficulty, rule)` → versus_screen이 BotMatchService 사용. race_controller 재대결 규칙은 Swift와 동일(host/join=같은 상대 핸드셰이크, quick/bot=leave 후 새로 find). 봇 칭호(`randomBotTitle`) 표시.
 - race_controller에 Swift 자리비움(AFK) 항복 이식: 30초 무조작 경고 배너, 120초면 패배 기록 후 나감. 백그라운드 시간은 제외. 대전 전적·황금지뢰 보상은 컨트롤러가 기록.
@@ -123,7 +126,7 @@
 - `mineapp://join?g=mine|treasure|touch&c=코드` (iOS CFBundleURLSchemes·Android intent-filter 등록, `app_links`). 홈이 받아 해당 방 참가 화면으로 이동. 공유 문구/링크는 `InviteLink.webURL`(Firebase Hosting `/j` 랜딩, Swift와 동일) + `share_plus`.
 
 ## 연습 보드(첫 진입 온보딩)
-- `guide/practice.dart` — 게임별(솔로·지뢰찾기·보물찾기·너에게 닿기를) 단계형 연습 보드. 첫 진입 때 한 번 자동(`pushGameWithOnboarding`, 멀티 메뉴는 `replace: true`), 이후엔 홈 솔로 카드/멀티 게임 탭의 `?` 버튼(`openPractice`). 본 적 있는지 `LocalStore.onboarded`. 테스트 `test/practice_test.dart`.
+- `guide/practice.dart` — 게임별(솔로·지뢰찾기·보물찾기·너에게 닿기를) 단계형 연습 보드. 자동으로 띄우지 않고 홈 솔로 카드/멀티 게임 탭의 `?` 버튼(`openPractice`)으로만 연다. 게임 진입은 `pushGame`(멀티 메뉴는 `replace: true`). 테스트 `test/practice_test.dart`.
 
 ## 원본에서 아직 미이식(로드맵)
 

@@ -77,10 +77,8 @@ class _VersusMenuScreenState extends State<VersusMenuScreen> {
         end: Alignment.bottomRight,
       );
 
-  /// 메뉴를 게임으로 바꿔 넣는다(닫으면 홈으로). 이 게임 첫 진입이면 연습 보드를 먼저 보여준다.
-  void _open(Widget screen) =>
-      pushGameWithOnboarding(context, game.practice, () => screen,
-          replace: true);
+  /// 메뉴를 게임으로 바꿔 넣는다(닫으면 홈으로).
+  void _open(Widget screen) => pushGame(context, () => screen, replace: true);
 
   @override
   Widget build(BuildContext context) {
@@ -612,6 +610,8 @@ class _VersusMenuScreenState extends State<VersusMenuScreen> {
               controller: _codeCtrl,
               autocorrect: false,
               enableSuggestions: false,
+              // 한글 자판이면 P→ㅔ처럼 바뀌어 필터에서 사라진다 → 영문(ASCII) 자판으로 띄운다.
+              keyboardType: TextInputType.visiblePassword,
               textCapitalization: TextCapitalization.characters,
               style: TextStyle(
                   color: t.text,

@@ -15,12 +15,16 @@ enum RaceRule {
 
 /// 서버(공유 보드)의 최신 상태 조각 — 상대 동작 수신용.
 class SharedBoardState {
+  // 기본값을 const []로 두면 수정 불가 리스트가 되어 .add에서 터진다(RTDB 수신부가 add로 채움).
   SharedBoardState({
-    this.revealed = const [],
-    this.exploded = const [],
-    this.myFlags = const [],
-    this.oppFlags = const [],
-  });
+    List<int>? revealed,
+    List<int>? exploded,
+    List<int>? myFlags,
+    List<int>? oppFlags,
+  }) : revealed = revealed ?? [],
+       exploded = exploded ?? [],
+       myFlags = myFlags ?? [],
+       oppFlags = oppFlags ?? [];
   final List<int> revealed; // 열린 안전 칸(공유)
   final List<int> exploded; // 실수로 열린 지뢰 칸(공유)
   final List<int> myFlags; // 내가 꽂은 깃발

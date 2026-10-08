@@ -96,7 +96,6 @@ class _CoopScreenState extends State<CoopScreen> {
                         tickets: g.autoFlagTickets,
                         isPlaying:
                             g.state == GameState.playing && !g.stunned,
-                        usesEdgeDrawer: true,
                         probing: probing,
                         onProbingChanged: (v) => setState(() => probing = v),
                         drawerBottomPadding: 40,

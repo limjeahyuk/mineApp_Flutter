@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../core/game_model.dart';
 import '../core/haptics.dart';
-import '../core/local_store.dart';
 import '../core/ui.dart';
 import '../core/theme.dart';
 import '../game/cell_view.dart';
@@ -72,9 +71,6 @@ enum OnboardKind {
   mine,
   treasure,
   touch;
-
-  bool get seen => LocalStore.shared.onboarded(name);
-  void markSeen() => LocalStore.shared.markOnboarded(name);
 
   PracticeScript get script => switch (this) {
         OnboardKind.solo => PracticeScript(
@@ -293,28 +289,18 @@ class PracticeBoard {
 
 // MARK: 진입 헬퍼
 
-/// 게임 시작 — 첫 진입이면 연습 보드를 먼저 보여주고, 끝나면(건너뛰기 포함) 실제 게임으로 바꿔 넣는다.
+/// 게임 시작. 연습 보드는 자동으로 띄우지 않고 ? 버튼(openPractice)으로만 연다.
 /// 원본 RootView.start: 큰 판(최고급)은 세로 기본 + 가로 허용. 게임 화면은 닫힐 때 세로로 되돌린다.
-void pushGameWithOnboarding(
-    BuildContext context, OnboardKind kind, Widget Function() game,
-    {bool landscape = false, bool replace = false}) {
+void pushGame(
+  BuildContext context,
+  Widget Function() game, {
+  bool landscape = false,
+  bool replace = false,
+}) {
   final nav = Navigator.of(context);
+  setAppOrientation(allowLandscape: landscape);
   // replace: 멀티 메뉴처럼 현재 화면을 게임으로 바꿔 넣는 경우(닫으면 홈으로).
-  final open = replace ? nav.pushReplacement : nav.push;
-  if (kind.seen) {
-    setAppOrientation(allowLandscape: landscape);
-    open(fadeRoute((_) => game()));
-    return;
-  }
-  open(fadeRoute((_) => PracticeScreen(
-        script: kind.script,
-        finishTitle: '실전 시작하기',
-        onFinish: () {
-          kind.markSeen();
-          setAppOrientation(allowLandscape: landscape);
-          nav.pushReplacement(fadeRoute((_) => game()));
-        },
-      )));
+  (replace ? nav.pushReplacement : nav.push)(fadeRoute((_) => game()));
 }
 
 /// ? 버튼 — 연습 보드만 풀스크린으로 열고, 끝나면 닫는다.

@@ -6,19 +6,16 @@ import '../core/ui.dart';
 
 /// 아이템(자동깃발·확성기·레이더) 도크 — Swift `AutoFlagDock`(대전·협동·보물) +
 /// ContentView 솔로 아이템 UI 이식. 보드 위 Stack에 `Positioned.fill`로 겹쳐 쓴다.
-/// - 초급·중급: 화면 우측 하단에 떠 있는 버튼(레이더가 있으면 위에 함께 쌓는다).
-/// - 고급·최고급(·보물): 오른쪽 가장자리 탭(서랍). 손잡이를 눌러 열고, 위아래로 드래그해 옮긴다.
+/// 모든 난이도·모드: 오른쪽 가장자리 탭(서랍). 손잡이를 눌러 열고, 위아래로 드래그해 옮긴다.
 /// `probing`이 켜지면 호출부(BoardWidget)가 보드 탭을 자동깃발(onProbe)로 보낸다.
 class ItemDock extends StatefulWidget {
   const ItemDock({
     super.key,
     required this.tickets,
     required this.isPlaying,
-    required this.usesEdgeDrawer,
     required this.probing,
     required this.onProbingChanged,
     this.drawerBottomPadding = 96,
-    this.floatingBottomPadding = 52,
     this.megaphoneTickets,
     this.onMegaphone,
     this.radarTickets,
@@ -28,11 +25,9 @@ class ItemDock extends StatefulWidget {
 
   final int tickets;
   final bool isPlaying;
-  final bool usesEdgeDrawer;
   final bool probing;
   final ValueChanged<bool> onProbingChanged;
   final double drawerBottomPadding;
-  final double floatingBottomPadding;
 
   /// 확성기 남은 수 — null이면 확성기 항목 없음(협동 전용).
   final int? megaphoneTickets;
@@ -54,6 +49,8 @@ class _ItemDockState extends State<ItemDock> {
   double _drawerOffsetY = 0; // 손잡이 세로 위치(드래그로 이동)
   double _drag = 0;
 
+  static const _handleH = 84.0;
+  static const _regionH = 240.0; // 서랍이 펼쳐질 수 있는 최대 높이
   static const _itemAccent = AppTheme.itemPurple;
   static const _megaphoneAccent = AppTheme.gold;
   static const _radarAccent = AppTheme.radarSky;
@@ -87,30 +84,17 @@ class _ItemDockState extends State<ItemDock> {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    if (widget.usesEdgeDrawer) {
-      final limit = MediaQuery.of(context).size.height / 2 - 110;
-      final y = (_drawerOffsetY + _drag).clamp(-limit, limit);
-      return Positioned(
-        right: 0,
-        bottom: widget.drawerBottomPadding - y,
-        child: _edgeDrawer(t, limit),
-      );
-    }
+    final limit = MediaQuery.of(context).size.height / 2 - 110;
+    final y = (_drawerOffsetY + _drag).clamp(-limit, limit);
+    // 손잡이 중심을 고정하고 서랍은 그 중심에 맞춰 펼친다(서랍 높이에 따라 손잡이가 밀리지 않게).
+    // 영역 밖 빈 곳은 Align이 히트를 통과시키므로 보드 터치를 막지 않는다.
     return Positioned(
-      right: 14,
-      bottom: widget.floatingBottomPadding,
-      child: IntrinsicWidth(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (_showRadar) ...[
-              _radarButton(t, dense: false),
-              const SizedBox(height: 8),
-            ],
-            _flagButton(t, dense: false),
-          ],
-        ),
+      right: 0,
+      bottom: widget.drawerBottomPadding - y + _handleH / 2 - _regionH / 2,
+      height: _regionH,
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: _edgeDrawer(t, limit),
       ),
     );
   }
@@ -311,7 +295,7 @@ class _ItemDockState extends State<ItemDock> {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 150),
               width: 18,
-              height: 84,
+              height: _handleH,
               decoration: BoxDecoration(
                 color: handleColor,
                 borderRadius: const BorderRadius.only(

@@ -23,6 +23,14 @@ enum Difficulty {
 
   bool get prefersLandscape => this == Difficulty.ultimate;
 
+  /// 타이머 자릿수 — 고급부터는 16분 39초(999초)를 넘기기 쉬워 4자리.
+  int get timerDigits => index >= Difficulty.expert.index ? 4 : 3;
+  int get timerMax => timerDigits == 4 ? 9999 : 999;
+
+  /// 타이머 표시(앞자리 0 채움, 상한에서 멈춤).
+  String formatTimer(int seconds) =>
+      seconds.clamp(0, timerMax).toString().padLeft(timerDigits, '0');
+
   /// Firestore 매치 문서의 `difficulty` 필드값 — Swift `Difficulty.rawValue`와 동일(한국어).
   String get label {
     switch (this) {

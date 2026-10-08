@@ -111,7 +111,6 @@ class _TreasureSoloScreenState extends State<TreasureSoloScreen> {
                   ItemDock(
                     tickets: game.autoFlagTickets,
                     isPlaying: game.state == GameState.playing,
-                    usesEdgeDrawer: true,
                     probing: probing,
                     onProbingChanged: (v) => setState(() => probing = v),
                     drawerBottomPadding: 110,

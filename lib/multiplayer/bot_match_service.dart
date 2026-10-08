@@ -3,39 +3,33 @@ import 'dart:math';
 
 import '../core/game_model.dart';
 import '../core/types.dart';
+import 'bot_solver.dart';
 import 'multiplayer.dart';
 
 /// 봇전 전용 서비스 — 오프라인에서 봇과 대결한다. Swift BotMatchService 이식.
-/// - 스피드: 시간 기반으로 상대 진행을 시뮬레이션하다 난이도별 목표 시각에 완료.
+/// 봇은 정답을 보지 않고 [BotSolver]로 화면에 보이는 숫자만 보고 푼다(막히면 찍어서 질 수도 있음).
+/// - 스피드: 봇이 같은 시드의 자기 보드를 직접 푼다. 찍어야 할 땐 항상 안전한 칸을 골라 탈락하지 않는다.
 /// - 지뢰 대결: 봇이 같은 보드의 '미러'(botModel)를 직접 플레이. 봇이 연 칸/꽂은 깃발은
 ///   onRemoteBoard로 사람 화면 공유 보드에 반영되고, 사람의 동작은 pushReveal/pushFlag로
-///   봇 미러에 반영된다.
-/// - 합동: 봇 파트너가 같은 보드를 함께 푼다(확정 안전 칸만 열고, 확정 지뢰엔 깃발로 표시).
+///   봇 미러에 반영된다. 막히면 찍는다(터지면 감점).
+/// - 합동: 봇 파트너가 같은 보드를 함께 푼다(확정 안전 칸만 열고, 확정 지뢰엔 깃발로 표시. 찍지 않음).
 class BotMatchService extends MatchService {
   BotMatchService({required this.rule});
 
   final RaceRule rule;
   final Random _rng = Random();
+  late final BotSolver _solver = BotSolver(_rng);
 
   MatchInfo? _info;
 
-  // 스피드: 시간 기반 상대 시뮬레이션
-  Timer? _speedTimer;
-  int _elapsed = 0;
-  int _finishAt = 60;
-
-  // 지뢰 대결: 봇이 직접 플레이하는 공유 보드 미러
+  // 봇이 직접 플레이하는 보드(스피드=자기 보드, 지뢰 대결·합동=공유 보드 미러)
   GameModel? _botModel;
+  final Set<int> _knownMines = {}; // 스피드: 봇이 머릿속으로 확정한 지뢰(깃발은 안 꽂음)
   Timer? _moveTimer;
   bool _stopped = false;
   final Set<int> _humanFlags = {};
   double _flagBias = 0.45;
 
-  static const _neighbors = [
-    [-1, -1], [-1, 0], [-1, 1],
-    [0, -1], [0, 1],
-    [1, -1], [1, 0], [1, 1],
-  ];
   static const _names = ['스윕봇', '마인봇', '지뢰봇', '디텍터봇', '클리어봇', '비프봇'];
 
   // ── 매칭(봇은 즉시 성사) ──
@@ -52,7 +46,6 @@ class BotMatchService extends MatchService {
       opponentTitle: randomBotTitle(_rng),
     );
     _info = info;
-    _finishAt = _speedFinishSeconds(difficulty);
     return info;
   }
 
@@ -72,7 +65,7 @@ class BotMatchService extends MatchService {
     _stopped = false;
     switch (rule) {
       case RaceRule.speed:
-        _startSpeedSim();
+        _startSpeedBot(info);
       case RaceRule.score:
         _startBoardBot(info);
       case RaceRule.coop:
@@ -110,7 +103,9 @@ class BotMatchService extends MatchService {
       if (rule == RaceRule.coop) {
         final r = index ~/ m.cols, c = index % m.cols;
         final cell = m.grid[r][c];
-        if (cell.isFlagged && cell.flagOwner == FlagOwner.me) m.toggleFlag(r, c);
+        if (cell.isFlagged && cell.flagOwner == FlagOwner.me) {
+          m.toggleFlag(r, c);
+        }
       }
     }
     m.applySharedState(SharedBoardState(oppFlags: _humanFlags.toList()));
@@ -119,8 +114,6 @@ class BotMatchService extends MatchService {
   @override
   void leave() {
     _stopped = true;
-    _speedTimer?.cancel();
-    _speedTimer = null;
     _moveTimer?.cancel();
     _moveTimer = null;
     _botModel?.dispose();
@@ -128,24 +121,89 @@ class BotMatchService extends MatchService {
     _humanFlags.clear();
   }
 
-  // ── 스피드 — 시간 기반 상대 ──
-  void _startSpeedSim() {
-    _elapsed = 0;
-    _speedTimer?.cancel();
-    _speedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      _elapsed += 1;
-      if (_elapsed >= _finishAt) {
-        onOpponent?.call(OpponentStatus(
-            progress: 1, phase: RacerPhase.won, elapsed: _elapsed));
-        _speedTimer?.cancel();
-        _speedTimer = null;
-      } else {
-        onOpponent?.call(OpponentStatus(
-            progress: (_elapsed / _finishAt).clamp(0, 1),
-            phase: RacerPhase.playing,
-            elapsed: _elapsed));
-      }
+  // ── 스피드 — 봇이 같은 시드의 자기 보드를 직접 푼다 ──
+  void _startSpeedBot(MatchInfo info) {
+    _moveTimer?.cancel();
+    _botModel?.dispose();
+    final m = GameModel()
+      ..difficulty = info.difficulty
+      ..recordsWins = false;
+    m.startSeededGame(info.seed, safeR: info.safeR, safeC: info.safeC);
+    _botModel = m;
+    _knownMines.clear();
+    _moveTimer = Timer(
+      const Duration(milliseconds: 1500),
+      () => _speedStep(info),
+    );
+  }
+
+  /// 다음 수를 고르고, 생각하는 시간만큼 기다렸다가 둔다(찍을 땐 더 오래 고민).
+  void _speedStep(MatchInfo info) {
+    final m = _botModel;
+    if (_stopped || m == null || m.state != GameState.playing) return;
+    BotMove? mv;
+    while (true) {
+      mv = _solver.next(m, _knownMines, startR: info.safeR, startC: info.safeC);
+      if (mv == null || !mv.flag) break;
+      _knownMines.add(mv.r * m.cols + mv.c); // 스피드엔 깃발이 필요 없다
+    }
+    if (mv == null) return;
+    // 스피드 봇은 찍을 때 지뢰를 밟지 않는다 — 찍은 칸이 지뢰면 경계의 안전한 칸으로 바꾼다.
+    final move = mv.guess && m.grid[mv.r][mv.c].isMine
+        ? _safeGuess(m) ?? mv
+        : mv;
+    final jitter = 0.75 + _rng.nextDouble() * (1.6 - 0.75);
+    // 찍어야 하는 수는 사람처럼 7~10초 더 망설인다 → 그 사이 사람이 따라잡을 기회.
+    final think =
+        _speedThink(info.difficulty) * jitter +
+        (move.guess ? 7 + _rng.nextDouble() * 3 : 0);
+    _moveTimer = Timer(Duration(milliseconds: (think * 1000).round()), () {
+      if (_stopped || _botModel != m || m.state != GameState.playing) return;
+      m.reveal(move.r, move.c);
+      final phase = switch (m.state) {
+        GameState.won => RacerPhase.won,
+        GameState.lost => RacerPhase.lost,
+        _ => RacerPhase.playing,
+      };
+      onOpponent?.call(
+        OpponentStatus(
+          progress: _botProgress(m),
+          phase: phase,
+          elapsed: m.elapsed,
+        ),
+      );
+      if (phase == RacerPhase.playing) _speedStep(info);
     });
+  }
+
+  /// 아직 안 열린 안전 칸 하나(열린 칸 옆 우선) — 스피드 봇의 '운 좋은 찍기'.
+  BotMove? _safeGuess(GameModel m) {
+    final frontier = <BotMove>[], any = <BotMove>[];
+    for (var r = 0; r < m.rows; r++) {
+      for (var c = 0; c < m.cols; c++) {
+        final cell = m.grid[r][c];
+        if (cell.isRevealed || cell.isMine) continue;
+        final mv = BotMove(r, c, guess: true);
+        any.add(mv);
+        var nearOpen = false;
+        for (var dr = -1; dr <= 1 && !nearOpen; dr++) {
+          for (var dc = -1; dc <= 1; dc++) {
+            final nr = r + dr, nc = c + dc;
+            if (nr >= 0 &&
+                nr < m.rows &&
+                nc >= 0 &&
+                nc < m.cols &&
+                m.grid[nr][nc].isRevealed) {
+              nearOpen = true;
+              break;
+            }
+          }
+        }
+        if (nearOpen) frontier.add(mv);
+      }
+    }
+    final pool = frontier.isNotEmpty ? frontier : any;
+    return pool.isEmpty ? null : pool[_rng.nextInt(pool.length)];
   }
 
   // ── 지뢰 대결 — 봇이 같은 보드를 직접 플레이 ──
@@ -192,20 +250,20 @@ class BotMatchService extends MatchService {
   /// 합동 봇 한 수 — '확정된' 안전 칸만 연다. 확정 지뢰엔 깃발을 꽂아 사람이 피하도록 표시.
   /// 추측은 하지 않는다(빗나가면 둘 다 패배). 막히면 사람이 결정할 때까지 기다린다.
   void _botActOnceCoop(GameModel m) {
-    final (safe, mines) = _deductions(m);
-    for (final s in safe) {
-      final cell = m.grid[s[0]][s[1]];
-      if (!cell.isRevealed && !cell.isFlagged) {
-        m.reveal(s[0], s[1]);
-        return;
-      }
-    }
-    for (final x in mines) {
-      final cell = m.grid[x[0]][x[1]];
-      if (!cell.isFlagged && cell.flagOwner == null) {
-        _claim(x, m);
-        return;
-      }
+    final info = _info;
+    if (info == null) return;
+    final mv = _solver.next(
+      m,
+      const {},
+      startR: info.safeR,
+      startC: info.safeC,
+      allowGuess: false,
+    );
+    if (mv == null) return;
+    if (mv.flag) {
+      if (m.grid[mv.r][mv.c].flagOwner == null) _claim([mv.r, mv.c], m);
+    } else {
+      m.reveal(mv.r, mv.c);
     }
   }
 
@@ -227,22 +285,31 @@ class BotMatchService extends MatchService {
   }
 
   /// 봇 한 수 — 사람처럼 둔다. 확정 지뢰는 flagBias 확률로 차지, 아니면 안전 칸을 연다.
+  /// 확정 수가 없으면 가장 덜 위험해 보이는 칸을 찍는다(지뢰면 터져서 감점).
   void _botActOnce(GameModel m) {
-    final (safe, mines) = _deductions(m);
+    final info = _info;
+    if (info == null) return;
+    final (safe, mines) = _solver.deduce(m, const {});
+    List<int> rc(int i) => [i ~/ m.cols, i % m.cols];
     if (mines.isNotEmpty && _rng.nextDouble() < _flagBias) {
-      _claim(mines[_rng.nextInt(mines.length)], m);
+      _claim(rc(mines.elementAt(_rng.nextInt(mines.length))), m);
     } else if (safe.isNotEmpty) {
-      final s = safe[_rng.nextInt(safe.length)];
+      final s = rc(safe.elementAt(_rng.nextInt(safe.length)));
       m.reveal(s[0], s[1]);
     } else if (mines.isNotEmpty) {
-      _claim(mines[_rng.nextInt(mines.length)], m);
+      _claim(rc(mines.elementAt(_rng.nextInt(mines.length))), m);
     } else {
-      final s = _frontierSafeCell(m);
-      if (s != null) {
-        m.reveal(s[0], s[1]);
+      final mv = _solver.next(
+        m,
+        const {},
+        startR: info.safeR,
+        startC: info.safeC,
+      );
+      if (mv == null) return;
+      if (mv.flag) {
+        _claim([mv.r, mv.c], m);
       } else {
-        final mine = _unclaimedMine(m);
-        if (mine != null) _claim(mine, m);
+        m.reveal(mv.r, mv.c);
       }
     }
   }
@@ -251,42 +318,6 @@ class BotMatchService extends MatchService {
     final c = m.grid[cell[0]][cell[1]];
     if (c.isRevealed || c.isFlagged) return;
     m.toggleFlag(cell[0], cell[1]); // 깃발 = 지뢰 차지(점수)
-  }
-
-  /// 열린 숫자만으로 확정할 수 있는 안전 칸/지뢰 칸(사람의 기본 추론과 동일).
-  (List<List<int>> safe, List<List<int>> mines) _deductions(GameModel m) {
-    final cols = m.cols;
-    final safe = <int>{};
-    final mines = <int>{};
-    for (var r = 0; r < m.rows; r++) {
-      for (var c = 0; c < cols; c++) {
-        final cell = m.grid[r][c];
-        if (!cell.isRevealed || cell.isMine || cell.adjacent == 0) continue;
-        final hidden = <int>[];
-        var known = 0;
-        for (final o in _neighbors) {
-          final nr = r + o[0], nc = c + o[1];
-          if (nr < 0 || nr >= m.rows || nc < 0 || nc >= cols) continue;
-          final n = m.grid[nr][nc];
-          if (n.isFlagged || n.exploded) {
-            known += 1;
-          } else if (!n.isRevealed) {
-            hidden.add(nr * cols + nc);
-          }
-        }
-        if (hidden.isEmpty) continue;
-        if (cell.adjacent == known) {
-          safe.addAll(hidden);
-        } else if (cell.adjacent - known == hidden.length) {
-          mines.addAll(hidden);
-        }
-      }
-    }
-    List<int> toRC(int i) => [i ~/ cols, i % cols];
-    return (
-      safe.map(toRC).toList(),
-      mines.difference(safe).map(toRC).toList(),
-    );
   }
 
   /// 봇 미러의 현재 상태를 사람 화면으로 보낸다(봇 깃발은 상대 색으로 보인다).
@@ -324,49 +355,6 @@ class BotMatchService extends MatchService {
         score: m.myDuelScore));
   }
 
-  // ── 후보 칸 찾기 ──
-  List<int>? _unclaimedMine(GameModel m) {
-    final frontier = <List<int>>[];
-    final any = <List<int>>[];
-    for (var r = 0; r < m.rows; r++) {
-      for (var c = 0; c < m.cols; c++) {
-        final cell = m.grid[r][c];
-        if (!cell.isMine || cell.isRevealed || cell.isFlagged ||
-            cell.flagOwner != null) {
-          continue;
-        }
-        any.add([r, c]);
-        if (_hasRevealedNeighbor(m, r, c)) frontier.add([r, c]);
-      }
-    }
-    if (frontier.isNotEmpty) return frontier[_rng.nextInt(frontier.length)];
-    if (any.isNotEmpty) return any[_rng.nextInt(any.length)];
-    return null;
-  }
-
-  List<int>? _frontierSafeCell(GameModel m) {
-    final cands = <List<int>>[];
-    for (var r = 0; r < m.rows; r++) {
-      for (var c = 0; c < m.cols; c++) {
-        final cell = m.grid[r][c];
-        if (cell.isRevealed || cell.isMine || cell.isFlagged) continue;
-        if (_hasRevealedNeighbor(m, r, c)) cands.add([r, c]);
-      }
-    }
-    return cands.isEmpty ? null : cands[_rng.nextInt(cands.length)];
-  }
-
-  bool _hasRevealedNeighbor(GameModel m, int r, int c) {
-    for (final o in _neighbors) {
-      final nr = r + o[0], nc = c + o[1];
-      if (nr >= 0 && nr < m.rows && nc >= 0 && nc < m.cols &&
-          m.grid[nr][nc].isRevealed) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   double _botProgress(GameModel m) {
     final total = m.rows * m.cols - m.difficulty.mineCount;
     if (total <= 0) return 0;
@@ -379,13 +367,15 @@ class BotMatchService extends MatchService {
     return (opened / total).clamp(0, 1);
   }
 
-  // ── 난이도 파라미터(Swift와 동일) ──
-  int _speedFinishSeconds(Difficulty d) => switch (d) {
-        Difficulty.beginner => 27 + _rng.nextInt(17), // ≈35초
-        Difficulty.intermediate => 80 + _rng.nextInt(41), // ≈1분40초
-        Difficulty.expert => 360 + _rng.nextInt(121), // ≈7분
-        Difficulty.ultimate => 720 + _rng.nextInt(281), // ≈14분
-      };
+  // ── 난이도 파라미터 ──
+  /// 스피드 봇이 한 칸 여는 데 드는 기본 생각 시간(초, 실제는 ×0.75~1.6 흔들림).
+  /// 예상 완주 시간은 test/bot_solver_test.dart의 스피드 봇 테스트가 출력한다.
+  double _speedThink(Difficulty d) => switch (d) {
+    Difficulty.beginner => 4,
+    Difficulty.intermediate => 3.5,
+    Difficulty.expert => 3,
+    Difficulty.ultimate => 2.5,
+  };
 
   double _turnInterval(Difficulty d) => switch (d) {
         Difficulty.beginner => 2.6,

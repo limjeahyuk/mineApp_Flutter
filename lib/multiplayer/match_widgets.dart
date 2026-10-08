@@ -135,9 +135,11 @@ class RaceProgressRow extends StatelessWidget {
         Expanded(child: CapsuleProgress(fraction: v, color: color, height: 10)),
         const SizedBox(width: 8),
         SizedBox(
-          width: 40,
+          width: 44,
           child: Text('${(v * 100).round()}%',
               textAlign: TextAlign.right,
+              maxLines: 1,
+              softWrap: false,
               style: TextStyle(
                   color: color,
                   fontSize: 13,

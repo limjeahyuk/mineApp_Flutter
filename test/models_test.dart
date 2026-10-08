@@ -88,4 +88,22 @@ void main() {
     expect(a.mines, isNotEmpty);
     expect(a.golden.every(a.mines.contains), isTrue);
   });
+
+  // RTDB 수신부가 기본 생성 후 add로 채운다 — const [] 기본값이면 여기서 터져 공유 보드 동기화가 통째로 멈췄다.
+  test('SharedBoardState 기본 리스트는 수정 가능', () {
+    final b = SharedBoardState();
+    b.revealed.add(1);
+    b.exploded.add(2);
+    b.myFlags.add(3);
+    b.oppFlags.add(4);
+    expect(
+      [b.revealed, b.exploded, b.myFlags, b.oppFlags],
+      [
+        [1],
+        [2],
+        [3],
+        [4],
+      ],
+    );
+  });
 }
