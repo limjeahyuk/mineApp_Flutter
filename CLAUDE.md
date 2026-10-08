@@ -74,6 +74,8 @@
   - 협동: `coop_controller.dart`(Swift TouchRaceViewModel: 카운트다운 없음, 확성기 핑·지뢰 페널티(파트너 깃발 1개 떨어뜨림) 동기화, 성공 시 `recordTouch`+`submitTouchBest`) + `coop_screen.dart` + `touch_board.dart`(**80×80을 CustomPaint 한 장**으로 그림, 30px 셀, 2축 스크롤, 시작점 센터링, 핑 배너, 복기 시 만난 지점 마커).
   - 보물: `treasure_controller.dart`(**보드 51×51 — 원본과 동일**, 카운트다운 없음, 상대 자멸=승) + `treasure_screen.dart` + `treasure_board.dart`(30px 셀·프런티어 금테·게스트 180° 뒤집기·폭발·흔들림) + `treasure_solo_screen.dart`(혼자 연습).
 - 대전 메뉴(`versus_menu_screen.dart`)는 Swift MultiplayerMenuView 그대로 — 지뢰찾기(스피드/지뢰 대결/합동 × 난이도, 랜덤/봇/방/코드), 보물찾기(랜덤/방/코드 + 혼자 연습), 너에게 닿기를(랜덤/방/코드). 게임 화면은 메뉴를 `pushReplacement`(닫으면 홈으로 — Swift와 동일).
+- **연결 끊김 감지**(FirebaseMatchService `_startPresence`): RTDB `boards/<id>/presence/<uid>`=true + onDisconnect(false). 상대가 false인 채 30초(`_disconnectGrace`) 지나면 `onOpponentLeft`(=나가기와 같은 처리: 대전·보물 부전승, 협동 종료). 앱 강제종료 실측 확인. 값이 없으면(구버전 앱) 무시.
+- 승패 규칙 테스트: `test/multiplayer_rules_test.dart`(두 컨트롤러를 메모리 서비스로 연결해 5개 모드 승/패/무/이탈 14케이스).
 - 대전·보물·협동 공용 UI 조각: `multiplayer/match_widgets.dart`(검색/방코드+공유/실패/카운트다운/결과/자리비움 배너/진행바, `InviteLink`).
 
 ## 환경설정 · 내 정보 — 이식됨

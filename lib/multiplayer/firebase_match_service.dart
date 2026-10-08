@@ -66,6 +66,13 @@ class FirebaseMatchService extends MatchService {
   StreamSubscription? _boardSub;
   StreamSubscription? _eventsSub;
 
+  // 연결 끊김 감지(RTDB presence): boards/<id>/presence/<uid> = true, 끊기면 서버가 false로.
+  DatabaseReference? _presenceRef;
+  StreamSubscription? _connectedSub;
+  StreamSubscription? _oppPresenceSub;
+  Timer? _oppGoneTimer;
+  static const _disconnectGrace = Duration(seconds: 30);
+
   static int _randomSeed() {
     // 0..<2^62 비음수 (Swift Int64.random(0...Int64.max) 대응, 비트패턴 동일 해석).
     final r = Random();
@@ -514,6 +521,52 @@ class FirebaseMatchService extends MatchService {
     });
     _observeBoardRtdb();
     _observeEventsRtdb();
+    _startPresence(ref.id);
+  }
+
+  /// 앱 강제 종료·크래시·네트워크 끊김 감지. '나가기'는 Firestore phase=left로 따로 처리된다.
+  /// 내 presence는 연결될 때마다 true + onDisconnect(false)를 다시 건다(재연결 후에도 유지).
+  /// 상대가 false가 된 채 [_disconnectGrace] 동안 돌아오지 않으면 나간 것으로 본다
+  /// (앱 전환·잠깐 끊김은 봐준다). 값이 없으면(presence를 안 쓰는 구버전 앱) 무시.
+  void _startPresence(String matchId) {
+    if (_presenceRef != null) return; // 재대결 라운드에도 같은 매치면 그대로 유지
+    final node = _rtdb.ref('boards').child(matchId).child('presence');
+    final me = node.child(myId);
+    _presenceRef = me;
+    _connectedSub = _rtdb.ref('.info/connected').onValue.listen((e) async {
+      if (e.snapshot.value != true) return;
+      await me.onDisconnect().set(false);
+      await me.set(true);
+    });
+    final oppId = _opponentId;
+    if (oppId == null) return;
+    _oppPresenceSub = node.child(oppId).onValue.listen((e) {
+      if (e.snapshot.value == false) {
+        _oppGoneTimer ??= Timer(_disconnectGrace, () {
+          if (_opponentDone) return;
+          _opponentDone = true;
+          onOpponentLeft?.call();
+        });
+      } else {
+        _oppGoneTimer?.cancel();
+        _oppGoneTimer = null;
+      }
+    });
+  }
+
+  void _stopPresence() {
+    _connectedSub?.cancel();
+    _connectedSub = null;
+    _oppPresenceSub?.cancel();
+    _oppPresenceSub = null;
+    _oppGoneTimer?.cancel();
+    _oppGoneTimer = null;
+    final me = _presenceRef;
+    _presenceRef = null;
+    if (me != null) {
+      me.onDisconnect().cancel();
+      me.remove();
+    }
   }
 
   DatabaseReference? get _boardNode {
@@ -640,6 +693,7 @@ class FirebaseMatchService extends MatchService {
     _boardSub = null;
     _eventsSub?.cancel();
     _eventsSub = null;
+    _stopPresence();
     // RTDB를 실제로 쓴 적이 있을 때만(=보드 노드가 생겼을 때만) 정리한다.
     // 매칭만 하고 레이스를 시작하지 않았으면 보드 노드가 없어 지울 것도 없다.
     if (isLast && ref != null && _databaseOverride != null) {
