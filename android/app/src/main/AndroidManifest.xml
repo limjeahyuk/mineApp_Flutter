@@ -35,10 +35,10 @@
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
-        <!-- AdMob 앱 ID. ponytail: Android용 AdMob 앱이 아직 없어 Google 공식 테스트 ID — 출시 전 실제 ID로 교체. -->
+        <!-- AdMob 앱 ID(Android 앱 '지뢰찾기 아레나'). -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713"/>
+            android:value="ca-app-pub-9773018240020529~4799048374"/>
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

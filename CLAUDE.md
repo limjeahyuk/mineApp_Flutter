@@ -55,7 +55,7 @@
 
 ## 상점(코인·가챠) — 이식됨
 - `shop/shop_screen.dart`(뽑기/충전 2탭, initialTab 0=뽑기 1=충전 — 홈 코인칩=충전, 가방=뽑기), `shop/shop_logic.dart`(draw/drawTriple, 균등 1/3, 잭팟=×3 전부 일치 시 전 아이템 3개씩). ×3은 슬롯 3릴 순차 정지 연출.
-- 코인/광고: `LocalStore.coins`(시작 100), `drawCost 30`·`tripleDrawCost 90`, `claimRewardedAd`(+30, 하루 `dailyAdLimit 5`). 광고는 `shop/rewarded_ads.dart`(Swift RewardedAdManager 이식: 실제 AdMob 보상형, 첫 프레임 후 ATT 요청→SDK 시작, 미리 로드·지수 백오프·55분 만료). 미준비면 Swift처럼 4초 시뮬 화면(`_RewardedAdView`)으로 폴백. iOS 앱 ID/ATT 문구/SKAdNetwork는 Info.plist, **Android는 아직 Google 테스트 앱 ID·광고 단위 — 출시 전 실제 ID로 교체**.
+- 코인/광고: `LocalStore.coins`(시작 100), `drawCost 30`·`tripleDrawCost 90`, `claimRewardedAd`(+30, 하루 `dailyAdLimit 5`). 광고는 `shop/rewarded_ads.dart`(Swift RewardedAdManager 이식: 실제 AdMob 보상형, 첫 프레임 후 ATT 요청→SDK 시작, 미리 로드·지수 백오프·55분 만료). 미준비면 Swift처럼 4초 시뮬 화면(`_RewardedAdView`)으로 폴백. iOS 앱 ID/ATT 문구/SKAdNetwork는 Info.plist, Android 앱 ID는 AndroidManifest. 광고 단위는 양 플랫폼 모두 디버그=Google 테스트, 릴리스=실제 ID.
 - 홈·대전메뉴 코인 칩은 `LocalStore.coins` 실값 표시. 홈 상점 아이콘/코인 칩 → ShopScreen.
 
 ## 랭킹 — 이식됨
@@ -133,6 +133,6 @@
 
 ## 원본에서 아직 미이식(로드맵)
 
-Game Center(iOS 전용). Android AdMob 실제 ID.
+Game Center(iOS 전용).
 
 코드는 됐고 **콘솔/수동만 남은 것**: Firebase 규칙 실제 게시(위 dry-run 통과), 릴리스 키스토어 생성, Firebase Auth provider 활성화 + Apple capability/프로비저닝 + Android SHA-1 등록.

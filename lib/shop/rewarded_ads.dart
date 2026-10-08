@@ -14,11 +14,11 @@ class RewardedAdManager {
 
   static const _iosTest = 'ca-app-pub-3940256099942544/1712485313';
   static const _iosLive = 'ca-app-pub-9773018240020529/7768066534';
-  // ponytail: Android용 실제 광고 단위가 아직 없어 공식 테스트 ID — 출시 전 교체.
   static const _androidTest = 'ca-app-pub-3940256099942544/5224354917';
+  static const _androidLive = 'ca-app-pub-9773018240020529/4015440583';
 
   String get adUnitId {
-    if (Platform.isAndroid) return _androidTest;
+    if (Platform.isAndroid) return kDebugMode ? _androidTest : _androidLive;
     return kDebugMode ? _iosTest : _iosLive;
   }
 
