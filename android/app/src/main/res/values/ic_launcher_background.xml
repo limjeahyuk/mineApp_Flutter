@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 적응형 아이콘 배경. 전경(아이콘 그림)이 꽉 차서 보이지 않지만, 마스크 가장자리용으로 그라데이션 중간색. -->
+    <color name="ic_launcher_background">#5B5BC8</color>
+</resources>

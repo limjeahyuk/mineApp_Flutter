@@ -29,6 +29,8 @@
 ## Android
 
 - `adb: Operation not permitted`(macOS 샌드박스) → APK를 `/tmp`로 복사 후 `adb install -r /tmp/app-debug.apk`.
+- 앱 아이콘: iOS `AppIcon` 1024px에서 생성(레거시 `mipmap-*/ic_launcher.png` + 적응형 `mipmap-anydpi-v26/ic_launcher.xml`, 전경은 108dp 중 72dp에 맞춰 줄이고 둘레를 `ic_launcher_background`(#5B5BC8)로 채움). Android 12+ 스플래시도 이 아이콘을 쓴다. iOS 아이콘을 바꾸면 같이 다시 만들 것.
+- 출시 빌드: `flutter build appbundle`(키는 `android/key.properties` → `~/mineapp-release.jks`, alias `mineapp`). 업로드 키 SHA-1 `77:DA:9A:7D:BE:FA:7A:F0:01:7C:EF:CE:48:78:9C:26:4F:21:9D:B0`.
 
 ## 아키텍처
 
