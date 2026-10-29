@@ -376,39 +376,45 @@ class _RankingScreenState extends State<RankingScreen> {
                     fontWeight: FontWeight.w900)),
           ),
           const SizedBox(width: 12),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(e.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        color: mine ? _gold : t.text,
-                        fontSize: 15,
-                        fontWeight:
-                            mine ? FontWeight.bold : FontWeight.w500)),
-                if (e.title.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  TitleBadge(name: e.title, size: 9),
-                ],
+          // 이름(+나 배지)이 남는 폭을 전부 차지해 기록 시간을 행 오른쪽 끝에 붙인다.
+          Expanded(
+            child: Row(children: [
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(e.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: mine ? _gold : t.text,
+                            fontSize: 15,
+                            fontWeight:
+                                mine ? FontWeight.bold : FontWeight.w500)),
+                    if (e.title.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      TitleBadge(name: e.title, size: 9),
+                    ],
+                  ],
+                ),
+              ),
+              if (mine) ...[
+                const SizedBox(width: 12),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                      color: _gold, borderRadius: BorderRadius.circular(100)),
+                  child: const Text('나',
+                      style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold)),
+                ),
               ],
-            ),
+            ]),
           ),
-          if (mine) ...[
-            const SizedBox(width: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                  color: _gold, borderRadius: BorderRadius.circular(100)),
-              child: const Text('나',
-                  style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold)),
-            ),
-          ],
-          const Spacer(),
+          const SizedBox(width: 12),
           Text(timeLabel(e.timeSec),
               style: TextStyle(
                   color: t.text,
